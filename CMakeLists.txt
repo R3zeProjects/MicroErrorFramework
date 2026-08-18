@@ -1,0 +1,240 @@
+cmake_minimum_required(VERSION 3.25)
+
+project(MicroErrorSystem
+    VERSION 0.1.0
+    LANGUAGES CXX
+)
+
+include(CTest)
+
+option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+option(ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer" OFF)
+option(ENABLE_COVERAGE "Enable source coverage instrumentation" OFF)
+option(BUILD_BENCHMARKS "Build microbenchmarks" OFF)
+option(BUILD_FUZZERS "Build Clang LibFuzzer targets" OFF)
+option(BUILD_EXTERNAL_STRESS_TESTS
+    "Build stress tests against pinned third-party repositories"
+    OFF
+)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+add_library(MicroErrorSystemHeaders INTERFACE)
+target_include_directories(MicroErrorSystemHeaders
+    INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_compile_features(MicroErrorSystemHeaders INTERFACE cxx_std_23)
+
+if(MSVC)
+    target_compile_options(MicroErrorSystemHeaders INTERFACE /W4 /permissive-)
+else()
+    target_compile_options(MicroErrorSystemHeaders INTERFACE -Wall -Wextra -Wpedantic)
+endif()
+
+add_executable(MicroErrorSystem main.cpp)
+target_link_libraries(MicroErrorSystem PRIVATE MicroErrorSystemHeaders)
+
+function(enable_sanitizers target)
+    if(NOT ENABLE_SANITIZERS)
+        if(NOT ENABLE_THREAD_SANITIZER)
+            return()
+        endif()
+    endif()
+
+    if(MSVC)
+        message(FATAL_ERROR "ENABLE_SANITIZERS is not configured for MSVC in this project")
+    endif()
+
+    if(ENABLE_SANITIZERS AND ENABLE_THREAD_SANITIZER)
+        message(FATAL_ERROR "ENABLE_SANITIZERS and ENABLE_THREAD_SANITIZER cannot be enabled together")
+    endif()
+
+    if(ENABLE_THREAD_SANITIZER)
+        target_compile_options(${target} PRIVATE -fsanitize=thread -fno-omit-frame-pointer)
+        target_link_options(${target} PRIVATE -fsanitize=thread)
+    else()
+        target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(${target} PRIVATE -fsanitize=address,undefined)
+    endif()
+endfunction()
+
+function(enable_coverage target)
+    if(NOT ENABLE_COVERAGE)
+        return()
+    endif()
+
+    if(MSVC)
+        message(FATAL_ERROR "ENABLE_COVERAGE requires GCC or Clang coverage tooling")
+    endif()
+
+    target_compile_options(${target} PRIVATE -O0 -g --coverage)
+    target_link_options(${target} PRIVATE --coverage)
+endfunction()
+
+if(ENABLE_COVERAGE AND (ENABLE_SANITIZERS OR ENABLE_THREAD_SANITIZER))
+    message(FATAL_ERROR
+        "ENABLE_COVERAGE cannot be combined with sanitizer instrumentation"
+    )
+endif()
+
+enable_sanitizers(MicroErrorSystem)
+
+if(BUILD_EXTERNAL_STRESS_TESTS)
+    include(FetchContent)
+
+    # Pinned release used only as an integration workload; it is not a runtime dependency.
+    FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG v3.12.0
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(MicroErrorSystemTests tests/vosp_error_tests.cpp)
+    target_link_libraries(MicroErrorSystemTests PRIVATE MicroErrorSystemHeaders)
+
+    add_executable(MicroErrorSystemLoggerTests tests/vosp_logger_tests.cpp)
+    target_link_libraries(MicroErrorSystemLoggerTests PRIVATE MicroErrorSystemHeaders)
+
+    add_executable(MicroErrorSystemWorkerPoolStressTests
+        tests/vosp_worker_pool_stress_tests.cpp
+    )
+    target_link_libraries(MicroErrorSystemWorkerPoolStressTests
+        PRIVATE MicroErrorSystemHeaders
+    )
+
+    if(BUILD_EXTERNAL_STRESS_TESTS)
+        add_executable(MicroErrorSystemNlohmannStressTests
+            tests/vosp_nlohmann_stress_tests.cpp
+        )
+        target_link_libraries(MicroErrorSystemNlohmannStressTests
+            PRIVATE MicroErrorSystemHeaders nlohmann_json::nlohmann_json
+        )
+    endif()
+
+    enable_sanitizers(MicroErrorSystemTests)
+    enable_sanitizers(MicroErrorSystemLoggerTests)
+    enable_sanitizers(MicroErrorSystemWorkerPoolStressTests)
+    enable_coverage(MicroErrorSystemTests)
+    enable_coverage(MicroErrorSystemLoggerTests)
+    enable_coverage(MicroErrorSystemWorkerPoolStressTests)
+    if(BUILD_EXTERNAL_STRESS_TESTS)
+        enable_sanitizers(MicroErrorSystemNlohmannStressTests)
+        enable_coverage(MicroErrorSystemNlohmannStressTests)
+    endif()
+
+    add_test(
+        NAME MicroErrorSystem.Tests
+        COMMAND MicroErrorSystemTests
+    )
+
+    add_test(
+        NAME MicroErrorSystem.LoggerTests
+        COMMAND MicroErrorSystemLoggerTests
+    )
+
+    add_test(
+        NAME MicroErrorSystem.WorkerPoolStressTests
+        COMMAND MicroErrorSystemWorkerPoolStressTests
+    )
+
+    if(BUILD_EXTERNAL_STRESS_TESTS)
+        add_test(
+            NAME MicroErrorSystem.NlohmannStressTests
+            COMMAND MicroErrorSystemNlohmannStressTests
+        )
+    endif()
+
+    # Keep the process environment intact and prepend toolchain DLL locations.
+    # ENVIRONMENT previously received a semicolon-separated CMake list, which
+    # CTest interpreted as several environment entries on Windows.
+    if(WIN32)
+        get_filename_component(MicroErrorSystemCompilerBin
+            "${CMAKE_CXX_COMPILER}"
+            DIRECTORY
+        )
+        set(MicroErrorSystemTestPathModification
+            "PATH=path_list_prepend:${MicroErrorSystemCompilerBin}"
+        )
+
+        # Clang on Windows keeps ASan/UBSan DLLs under lib/clang/<version>.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            get_filename_component(MicroErrorSystemClangRoot
+                "${MicroErrorSystemCompilerBin}"
+                DIRECTORY
+            )
+            file(GLOB MicroErrorSystemClangRuntimeDirs
+                "${MicroErrorSystemClangRoot}/lib/clang/*/lib/windows"
+            )
+            if(MicroErrorSystemClangRuntimeDirs)
+                list(SORT MicroErrorSystemClangRuntimeDirs)
+                list(GET MicroErrorSystemClangRuntimeDirs -1 MicroErrorSystemClangRuntime)
+                list(APPEND MicroErrorSystemTestPathModification
+                    "PATH=path_list_prepend:${MicroErrorSystemClangRuntime}"
+                )
+            endif()
+        endif()
+
+        set_tests_properties(
+            MicroErrorSystem.Tests
+            MicroErrorSystem.LoggerTests
+            MicroErrorSystem.WorkerPoolStressTests
+            PROPERTIES
+                ENVIRONMENT_MODIFICATION "${MicroErrorSystemTestPathModification}"
+        )
+    endif()
+
+    if(BUILD_EXTERNAL_STRESS_TESTS)
+        if(WIN32)
+            set_tests_properties(
+                MicroErrorSystem.NlohmannStressTests
+                PROPERTIES
+                    ENVIRONMENT_MODIFICATION "${MicroErrorSystemTestPathModification}"
+            )
+        endif()
+    endif()
+endif()
+
+if(BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "BUILD_FUZZERS requires a Clang compiler with LibFuzzer")
+    endif()
+
+    if(WIN32)
+        message(FATAL_ERROR
+            "BUILD_FUZZERS requires a Unix Clang toolchain; use Linux or macOS"
+        )
+    endif()
+
+    add_executable(MicroErrorSystemFuzzer fuzz/vosp_error_fuzzer.cpp)
+    target_link_libraries(MicroErrorSystemFuzzer PRIVATE MicroErrorSystemHeaders)
+    target_compile_options(MicroErrorSystemFuzzer PRIVATE
+        -fsanitize=fuzzer,address,undefined
+        -fno-omit-frame-pointer
+    )
+    target_link_options(MicroErrorSystemFuzzer PRIVATE
+        -fsanitize=fuzzer,address,undefined
+    )
+endif()
+
+if(BUILD_BENCHMARKS)
+    add_executable(MicroErrorSystemBenchmark benchmarks/vosp_benchmark.cpp)
+    target_link_libraries(MicroErrorSystemBenchmark PRIVATE MicroErrorSystemHeaders)
+    enable_sanitizers(MicroErrorSystemBenchmark)
+
+    if(BUILD_EXTERNAL_STRESS_TESTS)
+        add_executable(MicroErrorSystemExternalBenchmark
+            benchmarks/vosp_external_benchmark.cpp
+        )
+        target_link_libraries(MicroErrorSystemExternalBenchmark
+            PRIVATE MicroErrorSystemHeaders nlohmann_json::nlohmann_json
+        )
+        enable_sanitizers(MicroErrorSystemExternalBenchmark)
+    endif()
+endif()

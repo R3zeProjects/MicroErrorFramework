@@ -1,0 +1,185 @@
+{"kind":"deck","id":"pr/99bquw","name":"Deck"}
+{"kind":"layout","layoutId":"ea1a6984-ad91-48b8-b580-df545aa6eb88","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"2db4389b-7984-4ddf-a4e2-a315def04dba","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/smh3sh","slide":1,"title":"PORTFOLIO / C++23","textShapes":10}
+{"kind":"textbox","id":"sh/szm18j61","slide":1,"text":"PORTFOLIO / C++23","textPreview":"PORTFOLIO / C++23","textChars":17,"textLines":1,"bbox":[72,74,400,24]}
+{"kind":"textbox","id":"sh/rydkzepg","slide":1,"text":"MicroErrorSystem","textPreview":"MicroErrorSystem","textChars":16,"textLines":1,"bbox":[72,150,800,86]}
+{"kind":"textbox","id":"sh/6x4j69ov","slide":1,"text":"Микро-фреймворк для системно-независимого\nконтура ошибок и логгирования","textPreview":"Микро-фреймворк для системно-независимого | контура ошибок и логгирования","textChars":71,"textLines":2,"bbox":[76,270,650,100]}
+{"kind":"shape","id":"sh/1of25o7i","slide":1,"bbox":[76,420,118,30]}
+{"kind":"textbox","id":"sh/gn6lcj6d","slide":1,"text":"C++23","textPreview":"C++23","textChars":5,"textLines":1,"bbox":[76,426,118,18]}
+{"kind":"shape","id":"sh/fmxk3eps","slide":1,"bbox":[208,420,138,30]}
+{"kind":"textbox","id":"sh/elo3a9o7","slide":1,"text":"API 0.1.0","textPreview":"API 0.1.0","textChars":9,"textLines":1,"bbox":[208,426,138,18]}
+{"kind":"shape","id":"sh/psf2987u","slide":1,"bbox":[360,420,174,30]}
+{"kind":"textbox","id":"sh/or6lg369","slide":1,"text":"RAII · async · OOP","textPreview":"RAII · async · OOP","textChars":18,"textLines":1,"bbox":[360,426,174,18]}
+{"kind":"shape","id":"sh/u5g3e107","slide":1,"bbox":[880,144,260,260]}
+{"kind":"textbox","id":"sh/f6p4n61s","slide":1,"text":"E","textPreview":"E","textChars":1,"textLines":1,"bbox":[880,181,260,130]}
+{"kind":"textbox","id":"sh/g7ylgbid","slide":1,"text":"error contour","textPreview":"error contour","textChars":13,"textLines":1,"bbox":[880,324,260,26]}
+{"kind":"textbox","id":"sh/h8rmpgji","slide":1,"text":"MicroErrorSystem · API 0.1.0","textPreview":"MicroErrorSystem · API 0.1.0","textChars":28,"textLines":1,"bbox":[72,682,330,20]}
+{"kind":"textbox","id":"sh/2903il03","slide":1,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[1170,682,38,20]}
+{"kind":"notes","id":"nt/smh3sh","slide":1,"text":"[Sources]\n- MicroErrorSystem/README.md\n- MicroErrorSystem/include/vosp_error.hpp\n- MicroErrorSystem/include/vosp_logger.hpp"}
+{"kind":"slide","id":"sl/yxa03k","slide":2,"title":"01 / ARCHITECTURE","textShapes":17}
+{"kind":"textbox","id":"sh/87ux8zqx","slide":2,"text":"01 / ARCHITECTURE","textPreview":"01 / ARCHITECTURE","textChars":17,"textLines":1,"bbox":[72,48,500,24]}
+{"kind":"textbox","id":"sh/n6lwfu9c","slide":2,"text":"Контур отделён от предметной системы","textPreview":"Контур отделён от предметной системы","textChars":36,"textLines":1,"bbox":[72,82,1110,64]}
+{"kind":"textbox","id":"sh/m5cf6p8r","slide":2,"text":"Ошибку можно классифицировать, зарегистрировать и вернуть через единый Result API.","textPreview":"Ошибку можно классифицировать, зарегистрировать и вернуть через единый Result API.","textChars":82,"textLines":1,"bbox":[72,148,1070,34]}
+{"kind":"textbox","id":"sh/xcnyl4re","slide":2,"text":"MicroErrorSystem · API 0.1.0","textPreview":"MicroErrorSystem · API 0.1.0","textChars":28,"textLines":1,"bbox":[72,682,330,20]}
+{"kind":"textbox","id":"sh/wbexczqt","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1170,682,38,20]}
+{"kind":"shape","id":"sh/va5wju98","slide":2,"bbox":[82,280,190,150]}
+{"kind":"shape","id":"sh/a9wfa98n","slide":2,"bbox":[82,280,6,150]}
+{"kind":"textbox","id":"sh/507ypora","slide":2,"text":"Error","textPreview":"Error","textChars":5,"textLines":1,"bbox":[106,298,148,30]}
+{"kind":"textbox","id":"sh/kzexgjqp","slide":2,"text":"код · категория\nсообщение","textPreview":"код · категория | сообщение","textChars":25,"textLines":2,"bbox":[106,338,148,78]}
+{"kind":"textbox","id":"sh/mhwfadcb","slide":2,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[284,327,48,38]}
+{"kind":"shape","id":"sh/7i5wjitw","slide":2,"bbox":[342,280,190,150]}
+{"kind":"shape","id":"sh/83excnuh","slide":2,"bbox":[342,280,6,150]}
+{"kind":"textbox","id":"sh/94nelsbm","slide":2,"text":"Handler","textPreview":"Handler","textChars":7,"textLines":1,"bbox":[366,298,148,30]}
+{"kind":"textbox","id":"sh/u5wfexc7","slide":2,"text":"выбор режима\nи политики","textPreview":"выбор режима | и политики","textChars":23,"textLines":2,"bbox":[366,338,148,78]}
+{"kind":"textbox","id":"sh/v65w7its","slide":2,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[544,327,48,38]}
+{"kind":"shape","id":"sh/g7yxgnad","slide":2,"bbox":[602,280,190,150]}
+{"kind":"shape","id":"sh/h87y9sby","slide":2,"bbox":[602,280,6,150]}
+{"kind":"textbox","id":"sh/a9cv2tc3","slide":2,"text":"Register","textPreview":"Register","textChars":8,"textLines":1,"bbox":[626,298,148,30]}
+{"kind":"textbox","id":"sh/balwbyto","slide":2,"text":"add · remove\nis_exist","textPreview":"add · remove | is_exist","textChars":21,"textLines":2,"bbox":[626,338,148,78]}
+{"kind":"textbox","id":"sh/fehc3u9g","slide":2,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[804,327,48,38]}
+{"kind":"shape","id":"sh/ed8bapsv","slide":2,"bbox":[862,280,190,150]}
+{"kind":"shape","id":"sh/1gzu54rm","slide":2,"bbox":[862,280,6,150]}
+{"kind":"textbox","id":"sh/0fqtcza1","slide":2,"text":"Result / future","textPreview":"Result / future","textChars":15,"textLines":1,"bbox":[886,298,148,30]}
+{"kind":"textbox","id":"sh/rqhczu94","slide":2,"text":"значение или\nошибка","textPreview":"значение или | ошибка","textChars":19,"textLines":2,"bbox":[886,338,148,78]}
+{"kind":"shape","id":"sh/qp8b6psz","slide":2,"bbox":[180,506,880,60]}
+{"kind":"textbox","id":"sh/dszu1kra","slide":2,"text":"Один API-доступ · разные режимы исполнения · предсказуемый lifecycle","textPreview":"Один API-доступ · разные режимы исполнения · предсказуемый lifecycle","textChars":68,"textLines":1,"bbox":[200,525,840,24]}
+{"kind":"notes","id":"nt/yxa03k","slide":2,"text":"[Sources]\n- MicroErrorSystem/docs/ARCHITECTURE.md\n- MicroErrorSystem/include/vosp_error.hpp\n- MicroErrorSystem/include/vosp_async.hpp"}
+{"kind":"slide","id":"sl/thao73","slide":3,"title":"02 / EXECUTION MODES","textShapes":15}
+{"kind":"textbox","id":"sh/4fetknad","slide":3,"text":"02 / EXECUTION MODES","textPreview":"02 / EXECUTION MODES","textChars":20,"textLines":1,"bbox":[72,48,500,24]}
+{"kind":"textbox","id":"sh/3e5crits","slide":3,"text":"Режим выбирается типами","textPreview":"Режим выбирается типами","textChars":23,"textLines":1,"bbox":[72,82,1110,64]}
+{"kind":"textbox","id":"sh/idwbidsn","slide":3,"text":"TypeRegister и TypeHandler задают модель синхронизации без изменения прикладного кода.","textPreview":"TypeRegister и TypeHandler задают модель синхронизации без изменения прикладного кода.","textChars":86,"textLines":1,"bbox":[72,148,1070,34]}
+{"kind":"textbox","id":"sh/hc3up8b2","slide":3,"text":"MicroErrorSystem · API 0.1.0","textPreview":"MicroErrorSystem · API 0.1.0","textChars":28,"textLines":1,"bbox":[72,682,330,20]}
+{"kind":"textbox","id":"sh/gbutg3ah","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1170,682,38,20]}
+{"kind":"shape","id":"sh/valcnytw","slide":3,"bbox":[72,248,320,216]}
+{"kind":"shape","id":"sh/u9cbetsb","slide":3,"bbox":[72,248,6,216]}
+{"kind":"textbox","id":"sh/t83ulobq","slide":3,"text":"SingleThreaded","textPreview":"SingleThreaded","textChars":14,"textLines":1,"bbox":[96,266,278,30]}
+{"kind":"textbox","id":"sh/8nutc3a5","slide":3,"text":"Минимальные накладные расходы.\nУдобен для CLI, тестов и локального\nконтура ошибок.","textPreview":"Минимальные накладные расходы. | Удобен для CLI, тестов и локального | контура ошибок.","textChars":82,"textLines":3,"bbox":[96,306,278,144]}
+{"kind":"shape","id":"sh/ep8vulc7","slide":3,"bbox":[480,248,320,216]}
+{"kind":"shape","id":"sh/fahw36tc","slide":3,"bbox":[480,248,6,216]}
+{"kind":"textbox","id":"sh/0bqdwbux","slide":3,"text":"MultiThreaded","textPreview":"MultiThreaded","textChars":13,"textLines":1,"bbox":[504,266,278,30]}
+{"kind":"textbox","id":"sh/1cje5gbi","slide":3,"text":"Потокобезопасные регистры и\nконкурентный handler.\nДанные защищены mutex/shared state.","textPreview":"Потокобезопасные регистры и | конкурентный handler. | Данные защищены mutex/shared state.","textChars":85,"textLines":3,"bbox":[504,306,278,144]}
+{"kind":"shape","id":"sh/ql8vq1cv","slide":3,"bbox":[888,248,320,216]}
+{"kind":"shape","id":"sh/rmhwz6tg","slide":3,"bbox":[888,248,6,216]}
+{"kind":"textbox","id":"sh/snqdsbu1","slide":3,"text":"Async","textPreview":"Async","textChars":5,"textLines":1,"bbox":[912,266,278,30]}
+{"kind":"textbox","id":"sh/doze1gbm","slide":3,"text":"IndustrialWorkerPool: bounded\nочередь, backpressure, отмена,\nочистка и безопасное завершение.","textPreview":"IndustrialWorkerPool: bounded | очередь, backpressure, отмена, | очистка и безопасное завершение.","textChars":93,"textLines":3,"bbox":[912,306,278,144]}
+{"kind":"shape","id":"sh/ihovm1cz","slide":3,"bbox":[72,518,214,30]}
+{"kind":"textbox","id":"sh/3ixwvmtk","slide":3,"text":"capacity ≤ 1 000 000","textPreview":"capacity ≤ 1 000 000","textChars":20,"textLines":1,"bbox":[72,524,214,18]}
+{"kind":"shape","id":"sh/7mds329c","slide":3,"bbox":[310,518,190,30]}
+{"kind":"textbox","id":"sh/6lkbuxsr","slide":3,"text":"workers ≤ 1 024","textPreview":"workers ≤ 1 024","textChars":15,"textLines":1,"bbox":[310,524,190,18]}
+{"kind":"shape","id":"sh/tova5sr2","slide":3,"bbox":[524,518,205,30]}
+{"kind":"textbox","id":"sh/8nmtwnah","slide":3,"text":"queue ≤ 1 024","textPreview":"queue ≤ 1 024","textChars":13,"textLines":1,"bbox":[524,524,205,18]}
+{"kind":"shape","id":"sh/vqds7298","slide":3,"bbox":[753,518,190,30]}
+{"kind":"textbox","id":"sh/up4byxsn","slide":3,"text":"stop_token","textPreview":"stop_token","textChars":10,"textLines":1,"bbox":[753,524,190,18]}
+{"kind":"notes","id":"nt/thao73","slide":3,"text":"[Sources]\n- MicroErrorSystem/include/vosp_worker_pool.hpp\n- MicroErrorSystem/include/vosp_async.hpp\n- MicroErrorSystem/include/vosp_error.hpp"}
+{"kind":"slide","id":"sl/4u90vw","slide":4,"title":"03 / SAFETY","textShapes":14}
+{"kind":"textbox","id":"sh/xwz65cvi","slide":4,"text":"03 / SAFETY","textPreview":"03 / SAFETY","textChars":11,"textLines":1,"bbox":[72,48,500,24]}
+{"kind":"textbox","id":"sh/atonuxw7","slide":4,"text":"Надёжность — это ownership и shutdown-инварианты","textPreview":"Надёжность — это ownership и shutdown-инварианты","textChars":48,"textLines":1,"bbox":[72,82,1110,64]}
+{"kind":"textbox","id":"sh/buxo32ds","slide":4,"text":"Исправления проверены тестами, sanitizers и повторным прогоном после фиксов.","textPreview":"Исправления проверены тестами, sanitizers и повторным прогоном после фиксов.","textChars":76,"textLines":1,"bbox":[72,148,1070,34]}
+{"kind":"textbox","id":"sh/or65s7e1","slide":4,"text":"MicroErrorSystem · API 0.1.0","textPreview":"MicroErrorSystem · API 0.1.0","textChars":28,"textLines":1,"bbox":[72,682,330,20]}
+{"kind":"textbox","id":"sh/psf61svm","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1170,682,38,20]}
+{"kind":"shape","id":"sh/2ponqxwv","slide":4,"bbox":[72,230,530,110]}
+{"kind":"shape","id":"sh/nqxoz2dg","slide":4,"bbox":[72,230,6,110]}
+{"kind":"textbox","id":"sh/8nap4ru5","slide":4,"text":"Async lifetime","textPreview":"Async lifetime","textChars":14,"textLines":1,"bbox":[96,248,488,30]}
+{"kind":"textbox","id":"sh/toj6dwvq","slide":4,"text":"Задачи захватывают shared handler, а не this.\nСистема может быть уничтожена до завершения future.","textPreview":"Задачи захватывают shared handler, а не this. | Система может быть уничтожена до завершения future.","textChars":97,"textLines":2,"bbox":[96,288,488,38]}
+{"kind":"shape","id":"sh/5s3idwra","slide":4,"bbox":[72,370,530,110]}
+{"kind":"shape","id":"sh/4ruhkrqp","slide":4,"bbox":[72,370,6,110]}
+{"kind":"textbox","id":"sh/jql0bm94","slide":4,"text":"Logger callbacks","textPreview":"Logger callbacks","textChars":16,"textLines":1,"bbox":[96,388,488,30]}
+{"kind":"textbox","id":"sh/ipczih8j","slide":4,"text":"Snapshot sink-ов под mutex, callback — под\nrecursive mutex; reentrant attach/detach разрешён.","textPreview":"Snapshot sink-ов под mutex, callback — под | recursive mutex; reentrant attach/detach разрешён.","textChars":93,"textLines":2,"bbox":[96,428,488,38]}
+{"kind":"shape","id":"sh/hoji9cry","slide":4,"bbox":[660,230,548,110]}
+{"kind":"shape","id":"sh/wnahg7qd","slide":4,"bbox":[660,230,6,110]}
+{"kind":"textbox","id":"sh/v21g729s","slide":4,"text":"Worker self-shutdown","textPreview":"Worker self-shutdown","textChars":20,"textLines":1,"bbox":[684,248,506,30]}
+{"kind":"textbox","id":"sh/u1szeh8n","slide":4,"text":"Worker только сигнализирует остановку.\nВладелец позже забирает jthread и join-ит его.","textPreview":"Worker только сигнализирует остановку. | Владелец позже забирает jthread и join-ит его.","textChars":85,"textLines":2,"bbox":[684,288,506,38]}
+{"kind":"shape","id":"sh/1knilg7i","slide":4,"bbox":[660,370,548,110]}
+{"kind":"shape","id":"sh/gjehsbqx","slide":4,"bbox":[660,370,6,110]}
+{"kind":"textbox","id":"sh/kf6t4j25","slide":4,"text":"Contracts","textPreview":"Contracts","textChars":9,"textLines":1,"bbox":[684,388,506,30]}
+{"kind":"textbox","id":"sh/l0fad4jq","slide":4,"text":"Register и sink — non-owning ссылки.\nИх lifetime должен превышать system/logger.","textPreview":"Register и sink — non-owning ссылки. | Их lifetime должен превышать system/logger.","textChars":80,"textLines":2,"bbox":[684,428,506,38]}
+{"kind":"shape","id":"sh/yd4b29kz","slide":4,"bbox":[72,532,1136,54]}
+{"kind":"textbox","id":"sh/zexsbe1k","slide":4,"text":"RAII · stop_token · bounded resources · no detached threads","textPreview":"RAII · stop_token · bounded resources · no detached threads","textChars":59,"textLines":1,"bbox":[90,548,1100,22]}
+{"kind":"notes","id":"nt/4u90vw","slide":4,"text":"[Sources]\n- MicroErrorSystem/include/vosp_error.hpp\n- MicroErrorSystem/include/vosp_logger.hpp\n- MicroErrorSystem/include/vosp_worker_pool.hpp\n- MicroErrorSystem/tests/vosp_error_tests.cpp"}
+{"kind":"slide","id":"sl/e8mbwl","slide":5,"title":"04 / VERIFICATION","textShapes":14}
+{"kind":"textbox","id":"sh/ho72hgbq","slide":5,"text":"04 / VERIFICATION","textPreview":"04 / VERIFICATION","textChars":17,"textLines":1,"bbox":[72,48,500,24]}
+{"kind":"textbox","id":"sh/ulg3mlcf","slide":5,"text":"Проверка по слоям, а не один happy path","textPreview":"Проверка по слоям, а не один happy path","textChars":39,"textLines":1,"bbox":[72,82,1110,64]}
+{"kind":"textbox","id":"sh/vmpkfqtk","slide":5,"text":"Одинаковый набор тестов проходит в Release и под ASan/UBSan.","textPreview":"Одинаковый набор тестов проходит в Release и под ASan/UBSan.","textChars":60,"textLines":1,"bbox":[72,148,1070,34]}
+{"kind":"textbox","id":"sh/4rylsvah","slide":5,"text":"MicroErrorSystem · API 0.1.0","textPreview":"MicroErrorSystem · API 0.1.0","textChars":28,"textLines":1,"bbox":[72,682,330,20]}
+{"kind":"textbox","id":"sh/5s72l0b2","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1170,682,38,20]}
+{"kind":"shape","id":"sh/ipg3qlcb","slide":5,"bbox":[122,238,1036,64]}
+{"kind":"textbox","id":"sh/3qpkjqtw","slide":5,"text":"Release / native","textPreview":"Release / native","textChars":16,"textLines":1,"bbox":[150,257,600,24]}
+{"kind":"textbox","id":"sh/sfilwfad","slide":5,"text":"3 / 3","textPreview":"3 / 3","textChars":5,"textLines":1,"bbox":[850,257,260,24]}
+{"kind":"shape","id":"sh/dgrmp0by","slide":5,"bbox":[122,316,1036,64]}
+{"kind":"textbox","id":"sh/hsnyp0ji","slide":5,"text":"External + benchmark","textPreview":"External + benchmark","textChars":20,"textLines":1,"bbox":[150,335,600,24]}
+{"kind":"textbox","id":"sh/w7exwvix","slide":5,"text":"4 / 4","textPreview":"4 / 4","textChars":5,"textLines":1,"bbox":[850,335,260,24]}
+{"kind":"shape","id":"sh/v65gnq1c","slide":5,"bbox":[122,394,1036,64]}
+{"kind":"textbox","id":"sh/u5wful0r","slide":5,"text":"ASan + UBSan","textPreview":"ASan + UBSan","textChars":12,"textLines":1,"bbox":[150,413,600,24]}
+{"kind":"textbox","id":"sh/5w7yt0je","slide":5,"text":"3 / 3","textPreview":"3 / 3","textChars":5,"textLines":1,"bbox":[850,413,260,24]}
+{"kind":"shape","id":"sh/4vex0vit","slide":5,"bbox":[122,472,1036,64]}
+{"kind":"textbox","id":"sh/ju5grq1o","slide":5,"text":"Clang warnings / C++23","textPreview":"Clang warnings / C++23","textChars":22,"textLines":1,"bbox":[150,491,600,24]}
+{"kind":"textbox","id":"sh/itwfy503","slide":5,"text":"без ошибок","textPreview":"без ошибок","textChars":10,"textLines":1,"bbox":[850,491,260,24]}
+{"kind":"textbox","id":"sh/l03ehgja","slide":5,"text":"Проблема с concurrent sink callbacks была обнаружена ASan и устранена отдельным callback mutex.","textPreview":"Проблема с concurrent sink callbacks была обнаружена ASan и устранена отдельным callback mutex.","textChars":95,"textLines":1,"bbox":[122,580,1036,28]}
+{"kind":"notes","id":"nt/e8mbwl","slide":5,"text":"[Sources]\n- MicroErrorSystem/docs/BENCHMARKS.md\n- MicroErrorSystem/CMakeLists.txt\n- MicroErrorSystem/tests/\n- CTest output from cmake-build-release-current, cmake-build-asan-release, cmake-build-external-working"}
+{"kind":"slide","id":"sl/7lonm4","slide":6,"title":"05 / BENCHMARKS","textShapes":19}
+{"kind":"textbox","id":"sh/fm9wvapk","slide":6,"text":"05 / BENCHMARKS","textPreview":"05 / BENCHMARKS","textChars":15,"textLines":1,"bbox":[72,48,500,24]}
+{"kind":"textbox","id":"sh/gnidof65","slide":6,"text":"Измерения показывают стоимость и масштабирование","textPreview":"Измерения показывают стоимость и масштабирование","textChars":48,"textLines":1,"bbox":[72,82,1110,64]}
+{"kind":"textbox","id":"sh/horex07q","slide":6,"text":"Release, AMD Ryzen 7 PRO 1700X · 8C/16T · Windows 10 · Clang 22.1.6.","textPreview":"Release, AMD Ryzen 7 PRO 1700X · 8C/16T · Windows 10 · Clang 22.1.6.","textChars":68,"textLines":1,"bbox":[72,148,1070,34]}
+{"kind":"textbox","id":"sh/290vq5ob","slide":6,"text":"MicroErrorSystem · API 0.1.0","textPreview":"MicroErrorSystem · API 0.1.0","textChars":28,"textLines":1,"bbox":[72,682,330,20]}
+{"kind":"textbox","id":"sh/3a9wzapw","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1170,682,38,20]}
+{"kind":"shape","id":"sh/4b2dsf6h","slide":6,"bbox":[72,216,548,360]}
+{"kind":"textbox","id":"sh/pcbe1k7m","slide":6,"text":"Native API · operations/s","textPreview":"Native API · operations/s","textChars":25,"textLines":1,"bbox":[98,240,480,26]}
+{"kind":"textbox","id":"sh/qdkvupo7","slide":6,"text":"single","textPreview":"single","textChars":6,"textLines":1,"bbox":[104,312,92,22]}
+{"kind":"shape","id":"sh/retw3ups","slide":6,"bbox":[202,314,225.21,24]}
+{"kind":"textbox","id":"sh/7ixwjm1s","slide":6,"text":"3.6324M","textPreview":"3.6324M","textChars":7,"textLines":1,"bbox":[435.21,312,100,22]}
+{"kind":"textbox","id":"sh/6hovqhk7","slide":6,"text":"multi","textPreview":"multi","textChars":5,"textLines":1,"bbox":[104,380,92,22]}
+{"kind":"shape","id":"sh/tkfelwji","slide":6,"bbox":[202,382,281.06,24]}
+{"kind":"textbox","id":"sh/sj6dsr2d","slide":6,"text":"4.53325M","textPreview":"4.53325M","textChars":8,"textLines":1,"bbox":[491.06,380,100,22]}
+{"kind":"textbox","id":"sh/judwfm1g","slide":6,"text":"async","textPreview":"async","textChars":5,"textLines":1,"bbox":[104,448,92,22]}
+{"kind":"shape","id":"sh/it4vmhkv","slide":6,"bbox":[202,450,15.17,24]}
+{"kind":"textbox","id":"sh/5wfehcjm","slide":6,"text":"0.244678M","textPreview":"0.244678M","textChars":9,"textLines":1,"bbox":[225.17,448,100,22]}
+{"kind":"textbox","id":"sh/kv6do721","slide":6,"text":"workloads differ; compare within a panel","textPreview":"workloads differ; compare within a panel","textChars":40,"textLines":1,"bbox":[104,520,400,20]}
+{"kind":"shape","id":"sh/3qhwr610","slide":6,"bbox":[660,216,548,360]}
+{"kind":"textbox","id":"sh/2p8fy1kf","slide":6,"text":"External parser · documents/s","textPreview":"External parser · documents/s","textChars":29,"textLines":1,"bbox":[686,240,480,26]}
+{"kind":"textbox","id":"sh/elszq54n","slide":6,"text":"parse only","textPreview":"parse only","textChars":10,"textLines":1,"bbox":[690,334,130,22]}
+{"kind":"shape","id":"sh/zmlgzal8","slide":6,"bbox":[830,336,139.84,30]}
+{"kind":"textbox","id":"sh/07uhsfmt","slide":6,"text":"111.875k","textPreview":"111.875k","textChars":8,"textLines":1,"bbox":[979.84,334,100,22]}
+{"kind":"textbox","id":"sh/183y1k3y","slide":6,"text":"parse + control","textPreview":"parse + control","textChars":15,"textLines":1,"bbox":[690,416,130,22]}
+{"kind":"shape","id":"sh/m9czup4j","slide":6,"bbox":[830,418,280.74,30]}
+{"kind":"textbox","id":"sh/nalg3ul4","slide":6,"text":"224.593k","textPreview":"224.593k","textChars":8,"textLines":1,"bbox":[1120.74,416,100,22]}
+{"kind":"textbox","id":"sh/8buhwfmp","slide":6,"text":"20,000 docs · 6,667 malformed · 4 workers","textPreview":"20,000 docs · 6,667 malformed · 4 workers","textChars":41,"textLines":1,"bbox":[686,520,460,20]}
+{"kind":"notes","id":"nt/7lonm4","slide":6,"text":"[Sources]\n- MicroErrorSystem/docs/BENCHMARKS.md\n- MicroErrorSystem/benchmarks/vosp_benchmark.cpp\n- MicroErrorSystem/benchmarks/vosp_external_benchmark.cpp"}
+{"kind":"slide","id":"sl/zxxz2x","slide":7,"title":"06 / EXTERNAL INTEGRATION","textShapes":13}
+{"kind":"textbox","id":"sh/wze5wny1","slide":7,"text":"06 / EXTERNAL INTEGRATION","textPreview":"06 / EXTERNAL INTEGRATION","textChars":25,"textLines":1,"bbox":[72,48,500,24]}
+{"kind":"textbox","id":"sh/by5on2hg","slide":7,"text":"Контроль ошибок проверен вокруг реального репозитория","textPreview":"Контроль ошибок проверен вокруг реального репозитория","textChars":53,"textLines":1,"bbox":[72,82,1110,64]}
+{"kind":"textbox","id":"sh/axwnuxgv","slide":7,"text":"Тестовый контур не изолирован от внешнего кода: он подключает официальную библиотеку JSON.","textPreview":"Тестовый контур не изолирован от внешнего кода: он подключает официальную библиотеку JSON.","textChars":90,"textLines":1,"bbox":[72,148,1070,34]}
+{"kind":"textbox","id":"sh/lo76tczi","slide":7,"text":"MicroErrorSystem · API 0.1.0","textPreview":"MicroErrorSystem · API 0.1.0","textChars":28,"textLines":1,"bbox":[72,682,330,20]}
+{"kind":"textbox","id":"sh/k3y507yx","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1170,682,38,20]}
+{"kind":"shape","id":"sh/j2por2hc","slide":7,"bbox":[72,240,320,190]}
+{"kind":"shape","id":"sh/y1wnyxgr","slide":7,"bbox":[72,240,6,190]}
+{"kind":"textbox","id":"sh/1s3mh8zy","slide":7,"text":"Third party","textPreview":"Third party","textChars":11,"textLines":1,"bbox":[96,258,278,30]}
+{"kind":"textbox","id":"sh/07u5o3yt","slide":7,"text":"nlohmann/json\nv3.12.0\nMIT license","textPreview":"nlohmann/json | v3.12.0 | MIT license","textChars":33,"textLines":3,"bbox":[96,298,278,118]}
+{"kind":"shape","id":"sh/et0j2lw7","slide":7,"bbox":[480,240,320,190]}
+{"kind":"shape","id":"sh/zu9kvqds","slide":7,"bbox":[480,240,6,190]}
+{"kind":"textbox","id":"sh/0v214ved","slide":7,"text":"Pinned source","textPreview":"Pinned source","textChars":13,"textLines":1,"bbox":[504,258,278,30]}
+{"kind":"textbox","id":"sh/1wb2x0vy","slide":7,"text":"tag v3.12.0\ncommit 65ee684…\nFetchContent","textPreview":"tag v3.12.0 | commit 65ee684… | FetchContent","textChars":40,"textLines":3,"bbox":[504,298,278,118]}
+{"kind":"shape","id":"sh/mxkj65w3","slide":7,"bbox":[888,240,320,190]}
+{"kind":"shape","id":"sh/nytkzado","slide":7,"bbox":[888,240,6,190]}
+{"kind":"textbox","id":"sh/oz218ve9","slide":7,"text":"Observed","textPreview":"Observed","textChars":8,"textLines":1,"bbox":[912,258,278,30]}
+{"kind":"textbox","id":"sh/90b210vu","slide":7,"text":"20,000 inputs\n6,667 malformed\n4 / 4 CTest passed","textPreview":"20,000 inputs | 6,667 malformed | 4 / 4 CTest passed","textChars":48,"textLines":3,"bbox":[912,298,278,118]}
+{"kind":"textbox","id":"sh/a1kja5wf","slide":7,"text":"External repo → parser → Error → category register → Result","textPreview":"External repo → parser → Error → category register → Result","textChars":59,"textLines":1,"bbox":[110,510,1060,34]}
+{"kind":"textbox","id":"sh/b2dk3ad0","slide":7,"text":"github.com/nlohmann/json","textPreview":"github.com/nlohmann/json","textChars":24,"textLines":1,"bbox":[110,560,1060,22]}
+{"kind":"notes","id":"nt/zxxz2x","slide":7,"text":"[Sources]\n- https://github.com/nlohmann/json\n- MicroErrorSystem/tests/vosp_nlohmann_stress_tests.cpp\n- MicroErrorSystem/benchmarks/vosp_external_benchmark.cpp\n- MicroErrorSystem/CMakeLists.txt"}
+{"kind":"slide","id":"sl/nxd5fi","slide":8,"title":"07 / TAKEAWAY","textShapes":14}
+{"kind":"textbox","id":"sh/mx836dwv","slide":8,"text":"07 / TAKEAWAY","textPreview":"07 / TAKEAWAY","textChars":13,"textLines":1,"bbox":[72,48,500,24]}
+{"kind":"textbox","id":"sh/90j2h8vm","slide":8,"text":"Что уже доказано","textPreview":"Что уже доказано","textChars":16,"textLines":1,"bbox":[72,82,1110,64]}
+{"kind":"textbox","id":"sh/ozal8ne1","slide":8,"text":"Это не production-ready продукт — это честный, проверяемый фундамент микро-фреймворка.","textPreview":"Это не production-ready продукт — это честный, проверяемый фундамент микро-фреймворка.","textChars":86,"textLines":1,"bbox":[72,148,1070,34]}
+{"kind":"textbox","id":"sh/zuhkbyd4","slide":8,"text":"MicroErrorSystem · API 0.1.0","textPreview":"MicroErrorSystem · API 0.1.0","textChars":28,"textLines":1,"bbox":[72,682,330,20]}
+{"kind":"textbox","id":"sh/et832twz","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1170,682,38,20]}
+{"kind":"textbox","id":"sh/1wz2d8va","slide":8,"text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[100,232,38,30]}
+{"kind":"textbox","id":"sh/0vql43ep","slide":8,"text":"Единый error contour, независимый от предметной системы","textPreview":"Единый error contour, независимый от предметной системы","textChars":55,"textLines":1,"bbox":[150,234,980,30]}
+{"kind":"textbox","id":"sh/r6xk7yx8","slide":8,"text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[100,298,38,30]}
+{"kind":"textbox","id":"sh/q5ojytwn","slide":8,"text":"Три режима исполнения с типовым выбором политики","textPreview":"Три режима исполнения с типовым выбором политики","textChars":48,"textLines":1,"bbox":[150,300,980,30]}
+{"kind":"textbox","id":"sh/c3itkrq1","slide":8,"text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[100,364,38,30]}
+{"kind":"textbox","id":"sh/d4radwrm","slide":8,"text":"Bounded worker pool: backpressure, cancellation, cleanup","textPreview":"Bounded worker pool: backpressure, cancellation, cleanup","textChars":56,"textLines":1,"bbox":[150,366,980,30]}
+{"kind":"textbox","id":"sh/q1gbihsv","slide":8,"text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[100,430,38,30]}
+{"kind":"textbox","id":"sh/b29sbm9g","slide":8,"text":"Проверка внешней интеграцией и sanitizers","textPreview":"Проверка внешней интеграцией и sanitizers","textChars":41,"textLines":1,"bbox":[150,432,980,30]}
+{"kind":"shape","id":"sh/ozytg7a5","slide":8,"bbox":[100,526,1030,64]}
+{"kind":"textbox","id":"sh/p07a9crq","slide":8,"text":"Главный слоган: контур логгирования и контроля ошибок вне зависимости от системы.","textPreview":"Главный слоган: контур логгирования и контроля ошибок вне зависимости от системы.","textChars":81,"textLines":1,"bbox":[125,546,980,24]}
+{"kind":"notes","id":"nt/nxd5fi","slide":8,"text":"[Sources]\n- MicroErrorSystem/README.md\n- MicroErrorSystem/docs/README.ru.md\n- MicroErrorSystem/docs/BENCHMARKS.md\n- MicroErrorSystem/tests/"}
