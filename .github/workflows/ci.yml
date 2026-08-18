@@ -32,9 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install toolchain
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          ninja-build clang libc++-dev libc++abi-dev
+        run: .github/scripts/install-apt-packages.sh ninja-build clang libc++-dev libc++abi-dev
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -88,9 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install toolchain
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          clang-19 ninja-build g++-14
+        run: .github/scripts/install-apt-packages.sh clang-19 ninja-build g++-14
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -114,9 +110,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install toolchain
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          clang ninja-build libc++-dev libc++abi-dev
+        run: .github/scripts/install-apt-packages.sh clang ninja-build libc++-dev libc++abi-dev
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -142,9 +136,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install toolchain
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          clang-19 ninja-build g++-14
+        run: .github/scripts/install-apt-packages.sh clang-19 ninja-build g++-14
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -163,7 +155,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install Valgrind
-        run: sudo apt-get update && sudo apt-get install -y valgrind ninja-build
+        run: .github/scripts/install-apt-packages.sh valgrind ninja-build
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -193,7 +185,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install clang-tidy
         run: >-
-          sudo apt-get update && sudo apt-get install -y
+          .github/scripts/install-apt-packages.sh
           clang clang-tidy ninja-build libc++-dev libc++abi-dev
       - name: Configure
         run: >-
