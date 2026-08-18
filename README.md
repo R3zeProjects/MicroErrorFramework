@@ -66,7 +66,8 @@ All values below are real local Release measurements, not theoretical claims.
 Verification results:
 
 ```text
-Native CTest                         3/3 passed
+Native unit/stress CTest             3/3 passed
+Production benchmark smoke           1/1 passed
 nlohmann/json external CTest        4/4 passed
 fmt + cpp-httplib local CTest       4/4 passed
 Windows sanitizer fuzz smoke       100,000 inputs passed
@@ -78,6 +79,9 @@ Detailed methodology and raw measurement ranges are available in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Exact median/minimum/maximum values
 for the latest full run are in
 [docs/BENCHMARK_RUN_2026-08-18.md](docs/BENCHMARK_RUN_2026-08-18.md).
+The production matrix, latency percentiles, saturation scenarios, and soak
+results are documented in
+[docs/PRODUCTION_BENCHMARKS.md](docs/PRODUCTION_BENCHMARKS.md).
 
 Logger values are medians of seven Release launches after one excluded warm-up
 process over 3,000,000 owned records. Worker construction is excluded with a
@@ -533,10 +537,12 @@ not shipped as runtime dependencies.
 
 The project currently includes:
 
-- native Release tests: `3/3` passed;
+- native Release unit/stress tests: `3/3` passed;
+- Release production benchmark smoke: `1/1` passed;
 - external integration tests: `4/4` passed;
 - local `fmt` + `cpp-httplib` integration: `4/4` passed;
-- Clang ASan/UBSan tests: `3/3` passed;
+- Clang ASan/UBSan unit/stress tests: `3/3` passed;
+- Clang ASan/UBSan production benchmark smoke: `1/1` passed;
 - extended C++23 warning and syntax checks without errors;
 - LibFuzzer smoke test configuration;
 - Valgrind Memcheck and Helgrind CI jobs;

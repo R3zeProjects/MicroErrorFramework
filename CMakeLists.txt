@@ -356,6 +356,25 @@ if(BUILD_FUZZ_SMOKE)
 endif()
 
 if(BUILD_BENCHMARKS)
+    add_executable(MicroErrorSystemProductionBenchmark
+        benchmarks/vosp_production_benchmark.cpp
+    )
+    target_link_libraries(MicroErrorSystemProductionBenchmark
+        PRIVATE MicroErrorSystemHeaders
+    )
+    enable_sanitizers(MicroErrorSystemProductionBenchmark)
+    if(BUILD_TESTING)
+        add_test(
+            NAME MicroErrorSystem.ProductionBenchmarkSmoke
+            COMMAND MicroErrorSystemProductionBenchmark
+                    --profile=quick
+                    --operations=1000
+        )
+        set_tests_properties(MicroErrorSystem.ProductionBenchmarkSmoke
+            PROPERTIES TIMEOUT 120
+        )
+    endif()
+
     add_executable(MicroErrorSystemBenchmark benchmarks/vosp_benchmark.cpp)
     target_link_libraries(MicroErrorSystemBenchmark PRIVATE MicroErrorSystemHeaders)
     enable_sanitizers(MicroErrorSystemBenchmark)

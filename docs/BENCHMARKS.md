@@ -84,10 +84,11 @@ registration and synchronization according to the selected test case.
 
 ## Verification matrix
 
-- Release + CTest: 3/3 native tests passed;
+- Release + CTest: 3/3 native unit/stress tests and 1/1 production benchmark smoke passed;
 - Release + external integration + benchmark: 4/4 CTest tests passed;
 - local `fmt` + `cpp-httplib` HTTP integration: 4/4 CTest tests passed;
-- Clang AddressSanitizer + UndefinedBehaviorSanitizer: 3/3 native tests passed;
+- Clang AddressSanitizer + UndefinedBehaviorSanitizer: 3/3 native tests and
+  1/1 production benchmark smoke passed;
 - extended Clang warnings and C++23 syntax checks completed without errors.
 
 ## Logger and sink throughput
