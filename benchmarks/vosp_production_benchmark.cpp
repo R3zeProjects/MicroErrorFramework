@@ -337,8 +337,29 @@ namespace
 
     class NullBuffer final : public std::streambuf
     {
-        std::streamsize xsputn(const char*, std::streamsize count) override { return count; }
-        int_type overflow(int_type value) override { return traits_type::not_eof(value); }
+    public:
+        [[nodiscard]] std::uint64_t bytes() const noexcept
+        {
+            return bytes_.load(std::memory_order_relaxed);
+        }
+
+    private:
+        std::streamsize xsputn(const char*, std::streamsize count) override
+        {
+            bytes_.fetch_add(static_cast<std::uint64_t>(count), std::memory_order_relaxed);
+            return count;
+        }
+
+        int_type overflow(int_type value) override
+        {
+            if (!traits_type::eq_int_type(value, traits_type::eof()))
+            {
+                bytes_.fetch_add(1, std::memory_order_relaxed);
+            }
+            return traits_type::not_eof(value);
+        }
+
+        std::atomic<std::uint64_t> bytes_ = 0;
     };
 
     [[nodiscard]] std::string message(std::size_t size)
@@ -493,6 +514,52 @@ namespace
                                 delay.count() == 0 ? "includes flush" : "5us sink; 1% rejects");
             }
         }
+
+        using EndToEndAsyncLogger = PolicyLogger<AcceptAllPolicy, AsyncSinkDispatch,
+                                                 MinimalMetadataPolicy>;
+        for (const auto producer_count : producers)
+        {
+            NullBuffer end_to_end_buffer;
+            std::ostream end_to_end_output{&end_to_end_buffer};
+            BufferedStreamSink end_to_end_sink{end_to_end_output};
+            EndToEndAsyncLogger end_to_end_logger{end_to_end_sink};
+            const Error prepared{Category::NETWORK, 1007, message(128)};
+            auto stats = run_producers(producer_count, config.operations,
+                [&](std::size_t, std::size_t) { return end_to_end_logger.info(prepared); });
+            const auto flush_start = Clock::now();
+            end_to_end_logger.flush();
+            const auto sink_flushed = end_to_end_sink.flush();
+            stats.elapsed_ns += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    Clock::now() - flush_start).count());
+            stats.failed = end_to_end_logger.failed_records();
+            if (!sink_flushed || end_to_end_buffer.bytes() == 0 || stats.failed != 0)
+            {
+                throw std::runtime_error{"async end-to-end delivery mismatch"};
+            }
+            reporter.report("logger", "async_e2e_buffered_stream", producer_count, 1, 128,
+                            config.operations, std::move(stats), {},
+                            "producer->queue->format->buffered sink->flush");
+        }
+
+        CountingSink allocation_sink;
+        EndToEndAsyncLogger allocation_logger{allocation_sink};
+        const Error allocation_error{Category::NETWORK, 1008, message(128)};
+        AllocationResult async_allocations;
+        Statistics allocation_stats;
+        {
+            AllocationScope scope;
+            allocation_stats = run_producers(1, config.operations,
+                [&](std::size_t, std::size_t)
+                {
+                    return allocation_logger.info(allocation_error);
+                });
+            allocation_logger.flush();
+            async_allocations = scope.finish();
+        }
+        reporter.report("memory", "async_logger_allocations", 1, 1, 128,
+                        config.operations, std::move(allocation_stats), async_allocations,
+                        "accepted record copies, queue growth and dispatch; includes flush");
     }
 
     void worker_suite(Reporter& reporter, const Configuration& config)
@@ -677,6 +744,15 @@ namespace
         cancel_stats.failed = cancelled;
         reporter.report("worker", "shutdown_cancel_pending", 1, 1, 0, 512,
                         std::move(cancel_stats), {}, "failed=cancelled futures");
+
+        IndustrialWorkerPool measured_queue{4, 1024};
+        Statistics queue_memory_stats;
+        queue_memory_stats.accepted = 1;
+        reporter.report("memory", "worker_queue_reserved_storage", 1, 4, 0, 1,
+                        std::move(queue_memory_stats),
+                        AllocationResult{1, measured_queue.queue_storage_bytes()},
+                        "fixed ring slots only; excludes worker stacks and callable heaps");
+        measured_queue.shutdown(ShutdownMode::DRAIN);
     }
 
     void register_suite(Reporter& reporter, const Configuration& config)
@@ -786,6 +862,17 @@ namespace
         reporter.report("memory", "register_long_message_allocations", 1, 0, 1024,
                         config.operations, std::move(memory_stats), allocations,
                         "global new/new[] only; throughput not measured");
+
+        Statistics error_size_stats;
+        error_size_stats.accepted = 1;
+        reporter.report("memory", "error_object_static_size", 1, 0, 0, 1,
+                        std::move(error_size_stats), AllocationResult{1, sizeof(Error)},
+                        "sizeof(Error); excludes owned message allocation");
+        Statistics entry_size_stats;
+        entry_size_stats.accepted = 1;
+        reporter.report("memory", "log_entry_static_size", 1, 0, 0, 1,
+                        std::move(entry_size_stats), AllocationResult{1, sizeof(LogEntry)},
+                        "sizeof(LogEntry); excludes owned message allocation");
     }
 
     void soak_suite(Reporter& reporter, const Configuration& config)

@@ -1,0 +1,55 @@
+name: Nightly production soak
+
+on:
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+    inputs:
+      component_seconds:
+        description: Seconds per logger, worker pool, and register phase
+        required: true
+        default: '3600'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-production-soak
+  cancel-in-progress: false
+
+jobs:
+  linux-soak:
+    name: Linux full matrix and soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+          -DBUILD_BENCHMARKS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Contract tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Full production matrix
+        run: >-
+          ./build/MicroErrorSystemProductionBenchmark
+          --profile=full --csv=production-full.csv
+      - name: Sustained soak
+        env:
+          MANUAL_SECONDS: ${{ inputs.component_seconds }}
+        run: |
+          seconds="${MANUAL_SECONDS:-3600}"
+          ./build/MicroErrorSystemProductionBenchmark \
+            --profile=soak --duration="$seconds" --csv=production-soak.csv
+      - name: Upload raw results
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-soak-${{ github.run_id }}
+          path: |
+            production-full.csv
+            production-soak.csv
+          retention-days: 30

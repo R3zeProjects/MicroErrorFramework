@@ -66,15 +66,16 @@ All values below are real local Release measurements, not theoretical claims.
 Verification results:
 
 ```text
-Native unit/stress CTest             3/3 passed
-Production benchmark smoke           1/1 passed
-nlohmann/json external CTest        4/4 passed
-fmt + cpp-httplib local CTest       4/4 passed
-Windows sanitizer fuzz smoke       100,000 inputs passed
+Native unit/stress/contract CTest     4/4 passed
+Production benchmark smoke            1/1 passed
+MSVC Release CTest                    5/5 passed
+nlohmann/json external CTest          6/6 passed
+fmt + cpp-httplib local CTest         5/5 passed
+Windows sanitizer fuzz smoke        100,000 inputs passed
 ```
 
 The benchmark machine was an AMD Ryzen 7 PRO 1700X with 8 physical cores,
-16 logical processors, 31.95 GiB RAM, Windows 10 Pro, and Clang 22.1.6.
+16 logical processors, 31.95 GiB RAM, Windows 10 Pro, and Clang 22.1.8.
 Detailed methodology and raw measurement ranges are available in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Exact median/minimum/maximum values
 for the latest full run are in
@@ -158,8 +159,9 @@ invalidate pending futures.
 - a standard library implementation providing `std::expected`;
 - Git for optional external integration workloads.
 
-The project is tested on Windows and Ubuntu in GitHub Actions. The LibFuzzer
-configuration targets Unix-like platforms with Clang.
+GitHub Actions now defines Windows MSVC/Clang and Linux GCC/Clang gates. These
+jobs become verified evidence only after a green remote run. The LibFuzzer,
+ThreadSanitizer, Valgrind and nightly soak configurations target Linux.
 
 ## Quick start
 
@@ -174,6 +176,19 @@ ctest --test-dir MicroErrorSystem/build --output-on-failure
 ```
 
 On Windows, the executable suffix is `.exe`.
+
+Install the header-only package and consume it through `find_package`:
+
+```bash
+cmake --install MicroErrorSystem/build --prefix MicroErrorSystem/install
+cmake -S consumer -B consumer/build \
+  -DCMAKE_PREFIX_PATH=/path/to/MicroErrorSystem/install
+```
+
+```cmake
+find_package(vosp 0.1 CONFIG REQUIRED)
+target_link_libraries(my_target PRIVATE vosp::vosp)
+```
 
 ## Minimal example
 
@@ -430,7 +445,8 @@ repository also provides a sanitizer-backed deterministic smoke target:
 
 ```bash
 cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-fuzz-smoke \
-  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_CXX_COMPILER=clang++ \
   -DBUILD_FUZZ_SMOKE=ON \
   -DBUILD_TESTING=OFF
 cmake --build MicroErrorSystem/build-fuzz-smoke --parallel
@@ -439,7 +455,10 @@ MicroErrorSystem/build-fuzz-smoke/MicroErrorSystemFuzzSmoke
 
 The smoke target executes 100,000 generated inputs through the same fuzz
 harness under AddressSanitizer and UndefinedBehaviorSanitizer. It complements
-the coverage-guided LibFuzzer job used on Ubuntu CI.
+coverage-guided LibFuzzer in CI. On Windows, use `RelWithDebInfo`: the dynamic
+Clang ASan runtime is not compatible with the Microsoft Debug CRT used by a
+`Debug` build. Add the compiler's ASan runtime directory to `PATH` before
+launching the executable.
 
 ## Real benchmark results
 
@@ -448,7 +467,7 @@ The following results were collected from a local Release build on:
 - Windows 10 Pro;
 - AMD Ryzen 7 PRO 1700X, 8 physical cores / 16 logical processors;
 - 31.95 GiB RAM;
-- Clang 22.1.6;
+- Clang 22.1.8;
 - benchmark date: 2026-08-18.
 
 Native API workload:
@@ -537,11 +556,11 @@ not shipped as runtime dependencies.
 
 The project currently includes:
 
-- native Release unit/stress tests: `3/3` passed;
+- native Release unit/stress/contract tests: `4/4` passed;
 - Release production benchmark smoke: `1/1` passed;
 - external integration tests: `4/4` passed;
 - local `fmt` + `cpp-httplib` integration: `4/4` passed;
-- Clang ASan/UBSan unit/stress tests: `3/3` passed;
+- Clang ASan/UBSan unit/stress/contract tests: `4/4` passed;
 - Clang ASan/UBSan production benchmark smoke: `1/1` passed;
 - extended C++23 warning and syntax checks without errors;
 - LibFuzzer smoke test configuration;
@@ -591,13 +610,17 @@ first stable generation.
   `inline const` values rather than `inline constexpr` objects.
 - Benchmark values are machine-dependent and should be compared only under the
   same toolchain and workload.
+- Hosted nightly CI runs a three-hour soak by default. A 12-hour release soak
+  requires a self-hosted runner or an external orchestration environment.
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Public API and concurrency contracts](docs/API_CONTRACTS.md)
 - [Benchmark report](docs/BENCHMARKS.md)
 - [External workload validation](docs/EXTERNAL_WORKLOADS.md)
 - [English API documentation](docs/README.en.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 

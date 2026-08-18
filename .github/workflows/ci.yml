@@ -1,0 +1,178 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-compilers:
+    name: Linux ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GCC
+            compiler: g++
+          - name: Clang
+            compiler: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+      - name: Configure
+        run: >-
+          cmake -G Ninja -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DBUILD_TESTING=ON
+          -DBUILD_BENCHMARKS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  windows-msvc:
+    name: Windows MSVC
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DBUILD_TESTING=ON -DBUILD_BENCHMARKS=ON
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  windows-clang:
+    name: Windows Clang
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >-
+          cmake -G Ninja -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER=clang++
+          -DBUILD_TESTING=ON
+          -DBUILD_BENCHMARKS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  address-undefined-sanitizers:
+    name: Linux Clang ASan and UBSan
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build
+      - name: Configure
+        run: >-
+          cmake -G Ninja -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++
+          -DBUILD_TESTING=ON
+          -DBUILD_BENCHMARKS=ON
+          -DENABLE_SANITIZERS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  thread-sanitizer:
+    name: Linux Clang ThreadSanitizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build
+      - name: Configure
+        run: >-
+          cmake -G Ninja -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++
+          -DBUILD_TESTING=ON
+          -DENABLE_THREAD_SANITIZER=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Concurrency contracts under TSan
+        run: >-
+          ctest --test-dir build
+          -R 'ConcurrencyContractTests|WorkerPoolStressTests|LoggerTests'
+          --output-on-failure
+
+  fuzzing:
+    name: Linux Clang LibFuzzer
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build
+      - name: Configure
+        run: >-
+          cmake -G Ninja -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++
+          -DBUILD_FUZZERS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Run public-state fuzzing
+        run: ./build/MicroErrorSystemFuzzer -runs=50000 -max_len=16384 -close_fd_mask=3
+
+  valgrind:
+    name: Linux Valgrind Memcheck and Helgrind
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind ninja-build
+      - name: Configure
+        run: >-
+          cmake -G Ninja -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Memcheck
+        run: >-
+          valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all
+          --track-origins=yes --error-exitcode=1
+          ./build/MicroErrorSystemConcurrencyContractTests
+      - name: Helgrind
+        run: >-
+          valgrind --tool=helgrind --fair-sched=yes --error-exitcode=1
+          ./build/MicroErrorSystemConcurrencyContractTests
+
+  static-analysis:
+    name: Linux clang-tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-tidy
+        run: sudo apt-get update && sudo apt-get install -y clang clang-tidy ninja-build
+      - name: Configure
+        run: >-
+          cmake -G Ninja -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+          -DBUILD_TESTING=ON
+      - name: Analyze while building
+        run: cmake --build build --parallel 2

@@ -1,0 +1,4 @@
+subsystem,scenario,producers,workers,message_bytes,operations,elapsed_ms,throughput_per_second,p50_ns,p95_ns,p99_ns,max_ns,accepted,failed,allocations,allocated_bytes,notes
+soak,parallel_logger,16,0,128,2534965001,30029.4,8.4416e+07,0,0,0,0,2534965001,0,0,0,"continuous duration profile"
+soak,worker_dispatch,4,8,0,79773438,30011.9,2.65806e+06,0,0,0,0,79773438,0,0,0,"bounded queue continuous profile"
+soak,register_add_remove,8,0,4,133617894,30008.4,4.45268e+06,0,0,0,0,133617894,0,0,0,"continuous lifecycle profile"

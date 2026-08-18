@@ -8,6 +8,8 @@ project(MicroErrorSystem
 set(MICRO_ERROR_SYSTEM_PRERELEASE "beta")
 
 include(CTest)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer" OFF)
@@ -37,14 +39,46 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(MicroErrorSystemHeaders INTERFACE)
+add_library(vosp::vosp ALIAS MicroErrorSystemHeaders)
+set_target_properties(MicroErrorSystemHeaders PROPERTIES EXPORT_NAME vosp)
 target_include_directories(MicroErrorSystemHeaders
     INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(MicroErrorSystemHeaders INTERFACE cxx_std_23)
 
+install(TARGETS MicroErrorSystemHeaders
+    EXPORT vospTargets
+)
+install(DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+install(EXPORT vospTargets
+    FILE vospTargets.cmake
+    NAMESPACE vosp::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vosp
+)
+configure_package_config_file(
+    cmake/vospConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/vospConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vosp
+)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/vospConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/vospConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/vospConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vosp
+)
+
 if(MSVC)
-    target_compile_options(MicroErrorSystemHeaders INTERFACE /W4 /permissive-)
+    # Cache-line isolation intentionally introduces tail padding in aligned
+    # counters and sink shards; C4324 is therefore not actionable.
+    target_compile_options(MicroErrorSystemHeaders INTERFACE /W4 /permissive- /wd4324)
 else()
     target_compile_options(MicroErrorSystemHeaders INTERFACE -Wall -Wextra -Wpedantic)
 endif()
@@ -209,6 +243,13 @@ if(BUILD_TESTING)
         PRIVATE MicroErrorSystemHeaders
     )
 
+    add_executable(MicroErrorSystemConcurrencyContractTests
+        tests/vosp_concurrency_contract_tests.cpp
+    )
+    target_link_libraries(MicroErrorSystemConcurrencyContractTests
+        PRIVATE MicroErrorSystemHeaders
+    )
+
     if(BUILD_EXTERNAL_STRESS_TESTS)
         add_executable(MicroErrorSystemNlohmannStressTests
             tests/vosp_nlohmann_stress_tests.cpp
@@ -228,9 +269,11 @@ if(BUILD_TESTING)
     enable_sanitizers(MicroErrorSystemTests)
     enable_sanitizers(MicroErrorSystemLoggerTests)
     enable_sanitizers(MicroErrorSystemWorkerPoolStressTests)
+    enable_sanitizers(MicroErrorSystemConcurrencyContractTests)
     enable_coverage(MicroErrorSystemTests)
     enable_coverage(MicroErrorSystemLoggerTests)
     enable_coverage(MicroErrorSystemWorkerPoolStressTests)
+    enable_coverage(MicroErrorSystemConcurrencyContractTests)
     if(BUILD_EXTERNAL_STRESS_TESTS)
         enable_sanitizers(MicroErrorSystemNlohmannStressTests)
         enable_coverage(MicroErrorSystemNlohmannStressTests)
@@ -249,6 +292,14 @@ if(BUILD_TESTING)
     add_test(
         NAME MicroErrorSystem.WorkerPoolStressTests
         COMMAND MicroErrorSystemWorkerPoolStressTests
+    )
+
+    add_test(
+        NAME MicroErrorSystem.ConcurrencyContractTests
+        COMMAND MicroErrorSystemConcurrencyContractTests
+    )
+    set_tests_properties(MicroErrorSystem.ConcurrencyContractTests
+        PROPERTIES TIMEOUT 120
     )
 
     if(BUILD_EXTERNAL_STRESS_TESTS)
@@ -292,6 +343,7 @@ if(BUILD_TESTING)
             MicroErrorSystem.Tests
             MicroErrorSystem.LoggerTests
             MicroErrorSystem.WorkerPoolStressTests
+            MicroErrorSystem.ConcurrencyContractTests
             PROPERTIES
                 ENVIRONMENT_MODIFICATION "${MicroErrorSystemTestPathModification}"
         )

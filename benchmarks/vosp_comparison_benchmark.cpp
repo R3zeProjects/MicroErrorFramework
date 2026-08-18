@@ -82,9 +82,9 @@ int main()
         Clock::now() - baseline_multi_start);
 
     std::array<MemoryRegister<Category::NETWORK>, worker_count> framework_registers;
-    for (auto& register_instance : framework_registers)
+    for (auto& framework_register : framework_registers)
     {
-        register_instance.reserve(operation_count / worker_count);
+        framework_register.reserve(operation_count / worker_count);
     }
     const auto framework_multi_start = Clock::now();
     std::array<std::jthread, worker_count> framework_workers;

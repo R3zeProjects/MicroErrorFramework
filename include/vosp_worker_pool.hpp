@@ -271,6 +271,16 @@ namespace vosp::async
         [[nodiscard]] std::size_t worker_count() const noexcept { return worker_count_; }
         [[nodiscard]] std::size_t queue_capacity() const noexcept { return queue_capacity_; }
 
+        /**
+         * @brief Returns bytes reserved for the fixed ring queue slots.
+         * @note Excludes the pool object, worker stacks, and heap allocations made
+         * by callables that do not fit inside std::function's local storage.
+         */
+        [[nodiscard]] std::size_t queue_storage_bytes() const noexcept
+        {
+            return tasks_.capacity() * sizeof(tasks_.front());
+        }
+
         /** @brief Returns the number of tasks waiting to start. */
         [[nodiscard]] std::size_t pending_tasks() const noexcept
         {

@@ -50,6 +50,7 @@ the compiler's ASan runtime directory in `PATH`.
 - 1/2/4/8-sink fan-out;
 - immediate and per-thread buffered stream output;
 - bounded asynchronous logging, flush, and producer backpressure;
+- end-to-end async queue, formatting, buffered stream and flush;
 - 5-microsecond slow sink and 1% sink rejection propagation.
 
 ### Worker pool
@@ -69,38 +70,59 @@ the compiler's ASan runtime directory in `PATH`.
 - duplicate, capacity, and missing-category errors;
 - concurrent successful `contains()` and `remove()` paths;
 - long-message allocation accounting.
+- static `Error`/`LogEntry`, worker queue, and async record allocation metrics.
 
 ## Latest full result
 
-The 2026-08-18 Release run completed 91 scenarios. Selected boundary results:
+The 2026-08-18 production-candidate Release run completed 100 scenarios.
+Selected boundary results:
 
 | Scenario | Throughput | p99 producer latency |
 | --- | ---: | ---: |
-| Parallel logger, 128 B, 1 producer | 8.99M records/s | 300 ns |
-| Parallel logger, 128 B, 16 producers | 20.77M records/s | 1.1 us |
-| Parallel logger, 8 KiB, 16 producers | 11.67M records/s | 1.5 us |
-| Serialized full-metadata logger, 16 producers | 3.31M records/s | 35.3 us |
-| Buffered stream sink, 8 producers | 17.84M records/s | 1.0 us |
-| Async logger, 1 producer | 1.89M records/s | 3.2 us |
-| Async logger, 16 producers | 1.78M records/s | 114.5 us |
-| Async logger with 5 us sink, 16 producers | 147,291 records/s | 132.7 us |
-| Worker dispatch, q1024, 2 workers, 1 producer | 3.50M tasks/s | 11.1 us |
-| Worker backpressure, 20 us tasks | 159,848 tasks/s | 619.5 us |
-| Worker tracked futures | 580,472 tasks/s | not sampled |
-| Worker native bulk | 4.92M tasks/s | not sampled |
-| Same-category register add, 1 producer | 2.19M operations/s | 1.1 us |
-| Same-category register add, 16 producers | 2.09M operations/s | 170.9 us |
-| Three partitioned register categories | 4.58M operations/s | 1.6 us |
+| Parallel logger, 128 B, 1 producer | 8.69M records/s | 500 ns |
+| Parallel logger, 128 B, 16 producers | 33.43M records/s | 700 ns |
+| Parallel logger, 8 KiB, 16 producers | 11.51M records/s | 1.4 us |
+| Serialized full-metadata logger, 16 producers | 3.31M records/s | 48.0 us |
+| Buffered stream sink, 8 producers | 20.20M records/s | 900 ns |
+| Async logger, 1 producer | 2.99M records/s | 1.9 us |
+| Async logger, 16 producers | 1.85M records/s | 224.1 us |
+| Async logger with 5 us sink, 16 producers | 182,833 records/s | 371.5 us |
+| Async E2E buffered stream, 1 producer | 3.03M records/s | 1.9 us |
+| Async E2E buffered stream, 16 producers | 1.60M records/s | 371.9 us |
+| Worker dispatch, q1024, 2 workers, 1 producer | 4.52M tasks/s | 4.8 us |
+| Worker backpressure, 20 us tasks | 166,824 tasks/s | 429.3 us |
+| Worker tracked futures | 648,437 tasks/s | not sampled |
+| Worker native bulk | 4.51M tasks/s | not sampled |
+| Same-category register add, 1 producer | 2.39M operations/s | 1.2 us |
+| Same-category register add, 16 producers | 2.00M operations/s | 139.8 us |
+| Three partitioned register categories | 5.90M operations/s | 1.4 us |
 
 Long 1,024-byte register messages used 300,000 observed normal allocations and
 213,600,000 allocated bytes for 100,000 inserts: 3 allocations and 2,136 bytes
 per stored error. The probe counts global `new`/`new[]` calls in the benchmark
 process; aligned and allocator-internal allocations can differ by platform.
 
+The async 128-byte pipeline observed 201,072 allocations and 22,135,000 bytes
+for 100,000 accepted records: approximately 2.01 allocations and 221 bytes per
+record. The fixed 1,024-slot worker ring reserved 114,688 bytes. On this ABI,
+`sizeof(Error)` is 40 bytes and `sizeof(LogEntry)` is 56 bytes; owned message
+storage is additional.
+
 Raw data:
 
 - [`production-full-2026-08-18.csv`](../benchmark-results/production-full-2026-08-18.csv)
 - [`production-soak-2026-08-18.csv`](../benchmark-results/production-soak-2026-08-18.csv)
+- [`production-full-verification-2026-08-18.csv`](../benchmark-results/production-full-verification-2026-08-18.csv)
+- [`production-soak-30s-2026-08-18.csv`](../benchmark-results/production-soak-30s-2026-08-18.csv)
+- [`production-full-candidate-2026-08-18.csv`](../benchmark-results/production-full-candidate-2026-08-18.csv)
+
+## Thirty-second soak verification
+
+| Subsystem | Operations | Throughput | Failures |
+| --- | ---: | ---: | ---: |
+| Parallel logger, 16 producers | 2,534,965,001 | 84.42M/s | 0 |
+| Bounded worker dispatch, 4 producers / 8 workers | 79,773,438 | 2.66M/s | 0 |
+| Register add/remove, 8 producers | 133,617,894 | 4.45M/s | 0 |
 
 ## Ten-second soak result
 

@@ -7,7 +7,7 @@
 - physical cores: 8;
 - logical processors: 16;
 - RAM: 31.95 GiB;
-- compiler: Clang 22.1.6;
+- compiler: Clang 22.1.8;
 - build mode: Release;
 - workload: 100,000 unique inserts;
 - date: 2026-08-18.
@@ -84,10 +84,10 @@ registration and synchronization according to the selected test case.
 
 ## Verification matrix
 
-- Release + CTest: 3/3 native unit/stress tests and 1/1 production benchmark smoke passed;
+- Release + CTest: 4/4 native unit/stress/contract tests and 1/1 production benchmark smoke passed;
 - Release + external integration + benchmark: 4/4 CTest tests passed;
 - local `fmt` + `cpp-httplib` HTTP integration: 4/4 CTest tests passed;
-- Clang AddressSanitizer + UndefinedBehaviorSanitizer: 3/3 native tests and
+- Clang AddressSanitizer + UndefinedBehaviorSanitizer: 4/4 native tests and
   1/1 production benchmark smoke passed;
 - extended Clang warnings and C++23 syntax checks completed without errors.
 
