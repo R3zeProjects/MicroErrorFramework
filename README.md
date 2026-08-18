@@ -54,12 +54,14 @@ All values below are real local Release measurements, not theoretical claims.
 | `nlohmann/json`, parse-only, 20,000 documents | **111,875 documents/s** |
 | `nlohmann/json`, parse + error control, 4 workers | **224,593 documents/s** |
 | `fmt` + `cpp-httplib` integration | **1,000 requests; 500 errors routed** |
-| MicroErrorSystem logger, single-threaded | **3.89742M records/s** |
-| `spdlog` `null_sink`, single-threaded | **15.3894M records/s** |
-| MicroErrorSystem `Logger`, 4 workers (serialized sink safety) | **2.01641M records/s** |
-| MicroErrorSystem `ParallelLogger`, 4 workers (thread-safe sink) | **4.52264M records/s** |
-| MicroErrorSystem `FastLogger`, 4 workers (fixed thread-safe sink) | **11.542M records/s** |
-| `spdlog` `null_sink`, 4 workers | **32.7011M records/s** |
+| MicroErrorSystem `Logger`, single-threaded | **4.00763M records/s** |
+| MicroErrorSystem policy logger, single-threaded | **4.95373M records/s** |
+| `spdlog` `null_sink`, single-threaded | **15.3891M records/s** |
+| MicroErrorSystem `Logger`, 4 workers (serialized sink safety) | **2.21746M records/s** |
+| MicroErrorSystem `ParallelLogger`, 4 workers (full metadata) | **10.2501M records/s** |
+| MicroErrorSystem policy logger, 4 workers (minimal metadata) | **12.9559M records/s** |
+| MicroErrorSystem async policy, end-to-end | **4.56479M records/s** |
+| `spdlog` `null_sink`, 4 workers | **46.8538M records/s** |
 
 Verification results:
 
@@ -76,24 +78,17 @@ Detailed methodology and baseline comparisons are available in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 The logger comparison uses `spdlog v1.15.3` with its `null_sink` and the same
-100,000 formatted records. Values are medians of five launches. `spdlog` is
+1,000,000 formatted records. Values are medians of five launches. `spdlog` is
 faster in this narrow sink-throughput workload. The result is expected:
 MicroErrorSystem additionally constructs a typed `Error`, `LogEntry`,
 timestamp, thread id, and executes a user sink callback. This is a component
 comparison, not a claim that one complete framework replaces the other.
 
-The logger hot path now has two targeted optimizations: a no-allocation fast
-path for a single sink and an owned-error overload that moves temporary error
-messages into `LogEntry`. For a thread-safe sink, `ParallelLogger` also removes
-the callback serialization used by the safe default `Logger`; on the measured
-four-worker workload this raised median throughput by **2.24x**. Throughput
-remains machine-dependent.
-
-For a fixed high-throughput sink, `FastLogger<Sink>` removes dynamic sink
-registration, virtual dispatch, timestamp/thread-id capture, and `Error`
-message allocation. Its five-run median was **11.542M records/s** with four
-workers. It is a synchronous direct path: the sink is externally owned,
-thread-safe, and must not retain `FastLogEntry::message` beyond `write()`.
+The common one-sink path uses an atomic sink pointer and avoids the registry
+mutex. `ParallelSinkDispatch` removes callback serialization for thread-safe
+sinks, while `MinimalMetadataPolicy` omits timestamp and thread-id collection.
+The same `PolicyLogger` therefore covers safe, parallel, and latency-oriented
+modes without a separate fast-logger class. Throughput remains machine-dependent.
 
 ## Architecture
 
@@ -280,24 +275,33 @@ AtomicSink sink;
 vosp::logger::ParallelLogger logger{sink};
 ```
 
-For the lowest overhead with a fixed sink type, use `FastLogger`. It accepts a
-borrowed `std::string_view` message, so no `Error` is allocated on the logging
-path:
+For the lowest overhead, compose the same logger with parallel dispatch and
+minimal metadata:
 
 ```cpp
-class MetricsSink
-{
-public:
-    [[nodiscard]] bool write(const vosp::logger::FastLogEntry& entry);
-};
+AtomicSink sink;
+vosp::logger::PolicyLogger<
+    vosp::logger::AcceptAllPolicy,
+    vosp::logger::ParallelSinkDispatch,
+    vosp::logger::MinimalMetadataPolicy> logger{sink};
 
-MetricsSink sink;
-vosp::logger::FastLogger logger{sink};
-logger.log(
-    vosp::logger::Level::INFO,
-    vosp::error::Category::NETWORK,
-    1001,
-    "Connection refused");
+logger.info(vosp::error::Error{
+    vosp::error::Category::NETWORK, 1001, "Connection refused"});
+```
+
+The asynchronous mode uses the same API and owns queued `Error` values. Its
+1,024-record bounded queue applies blocking backpressure and drains records in
+batches:
+
+```cpp
+vosp::logger::PolicyLogger<
+    vosp::logger::AcceptAllPolicy,
+    vosp::logger::AsyncSinkDispatch,
+    vosp::logger::MinimalMetadataPolicy> async_logger{sink};
+
+async_logger.info(vosp::error::Error{
+    vosp::error::Category::NETWORK, 1002, "Queued safely"});
+async_logger.flush();
 ```
 
 ## Build profiles

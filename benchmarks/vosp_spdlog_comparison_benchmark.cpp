@@ -19,7 +19,7 @@ namespace
 {
     using namespace vosp::error;
     using namespace vosp::logger;
-    constexpr std::uint32_t operation_count = 100'000;
+    constexpr std::uint32_t operation_count = 1'000'000;
     constexpr std::size_t worker_count = 4;
 
     class FormattingSink final : public ILogSink
@@ -40,30 +40,6 @@ namespace
         [[nodiscard]] std::uint32_t records() const noexcept
         {
             return records_.load();
-        }
-
-    private:
-        std::atomic<std::uint32_t> records_ = 0;
-    };
-
-    class FastFormattingSink final
-    {
-    public:
-        [[nodiscard]] bool write(const FastLogEntry& entry)
-        {
-            static_cast<void>(fmt::format(
-                "[{}] [{}] code={} message={}",
-                to_string(entry.level),
-                to_string(entry.category),
-                entry.code,
-                entry.message));
-            records_.fetch_add(1, std::memory_order_relaxed);
-            return true;
-        }
-
-        [[nodiscard]] std::uint32_t records() const noexcept
-        {
-            return records_.load(std::memory_order_relaxed);
         }
 
     private:
@@ -111,30 +87,6 @@ namespace
         });
     }
 
-    template<typename LoggerType>
-    [[nodiscard]] std::uint64_t measure_fast_multi(LoggerType& logger)
-    {
-        return measure([&]
-        {
-            std::array<std::jthread, worker_count> workers;
-            for (std::size_t worker = 0; worker < worker_count; ++worker)
-            {
-                workers[worker] = std::jthread{[&, worker]
-                {
-                    const std::uint32_t per_worker = operation_count /
-                        static_cast<std::uint32_t>(worker_count);
-                    for (std::uint32_t code = 0; code < per_worker; ++code)
-                    {
-                        static_cast<void>(logger.log(
-                            Level::INFO,
-                            Category::NETWORK,
-                            static_cast<std::uint32_t>(worker * per_worker) + code,
-                            "connection refused"));
-                    }
-                }};
-            }
-        });
-    }
 }
 
 int main()
@@ -169,19 +121,33 @@ int main()
     ParallelLogger micro_parallel_multi_logger{micro_parallel_multi_sink};
     const auto micro_parallel_multi_us = measure_multi(micro_parallel_multi_logger);
 
-    FastFormattingSink fast_sink;
-    FastLogger fast_logger{fast_sink};
-    const auto fast_single_us = measure([&]
+    FormattingSink policy_sink;
+    PolicyLogger<AcceptAllPolicy, ParallelSinkDispatch, MinimalMetadataPolicy>
+        policy_logger{policy_sink};
+    const auto policy_single_us = measure([&]
     {
         for (std::uint32_t code = 0; code < operation_count; ++code)
         {
-            static_cast<void>(fast_logger.log(
-                Level::INFO, Category::NETWORK, code, "connection refused"));
+            static_cast<void>(policy_logger.info(Error{
+                Category::NETWORK, code, "connection refused"}));
         }
     });
-    const auto fast_single_records = fast_sink.records();
-    const auto fast_multi_us = measure_fast_multi(fast_logger);
-    const auto fast_multi_records = fast_sink.records() - fast_single_records;
+    const auto policy_single_records = policy_sink.records();
+    const auto policy_multi_us = measure_multi(policy_logger);
+    const auto policy_multi_records = policy_sink.records() - policy_single_records;
+
+    FormattingSink async_sink;
+    PolicyLogger<AcceptAllPolicy, AsyncSinkDispatch, MinimalMetadataPolicy>
+        async_logger{async_sink};
+    const auto async_us = measure([&]
+    {
+        for (std::uint32_t code = 0; code < operation_count; ++code)
+        {
+            static_cast<void>(async_logger.info(Error{
+                Category::NETWORK, code, "connection refused"}));
+        }
+        async_logger.flush();
+    });
 
     const auto spd_multi_us = measure([&]
     {
@@ -201,7 +167,7 @@ int main()
     });
 
     std::cout << "comparison=MicroErrorSystem.Logger_vs_spdlog"
-              << " workload=100000 formatted records\n"
+              << " workload=" << operation_count << " formatted records\n"
               << "micro_single records=" << micro_sink.records()
               << " elapsed_us=" << micro_single_us
               << " records_per_second=" << throughput(micro_sink.records(), micro_single_us) << '\n'
@@ -215,12 +181,15 @@ int main()
               << " elapsed_us=" << micro_parallel_multi_us
               << " records_per_second=" << throughput(
                      micro_parallel_multi_sink.records(), micro_parallel_multi_us) << '\n'
-              << "fast_single records=" << fast_single_records
-              << " elapsed_us=" << fast_single_us
-              << " records_per_second=" << throughput(fast_single_records, fast_single_us) << '\n'
-              << "fast_multi records=" << fast_multi_records
-              << " elapsed_us=" << fast_multi_us
-              << " records_per_second=" << throughput(fast_multi_records, fast_multi_us) << '\n'
+              << "policy_single records=" << policy_single_records
+              << " elapsed_us=" << policy_single_us
+              << " records_per_second=" << throughput(policy_single_records, policy_single_us) << '\n'
+              << "policy_multi records=" << policy_multi_records
+              << " elapsed_us=" << policy_multi_us
+              << " records_per_second=" << throughput(policy_multi_records, policy_multi_us) << '\n'
+              << "policy_async records=" << async_sink.records()
+              << " elapsed_us=" << async_us
+              << " records_per_second=" << throughput(async_sink.records(), async_us) << '\n'
               << "spdlog_multi records=" << operation_count
               << " elapsed_us=" << spd_multi_us
               << " records_per_second=" << throughput(operation_count, spd_multi_us) << '\n';

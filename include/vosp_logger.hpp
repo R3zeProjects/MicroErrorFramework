@@ -3,9 +3,13 @@
 #include "vosp_error.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <iomanip>
 #include <mutex>
@@ -70,11 +74,53 @@ namespace vosp::logger
         static constexpr bool serializes_callbacks = false;
     };
 
+    /** @brief Queues owned records and delivers them on one background worker. */
+    struct AsyncSinkDispatch
+    {
+        static constexpr bool serializes_callbacks = false;
+        static constexpr std::size_t queue_capacity = 1024;
+    };
+
     /** @brief Restricts a type to a compile-time sink dispatch policy. */
     template<typename Dispatch>
     concept LoggerDispatchPolicy = requires
     {
         typename std::bool_constant<Dispatch::serializes_callbacks>;
+    };
+
+    /** @brief Captures timestamp and thread id for every record. */
+    struct FullMetadataPolicy
+    {
+        [[nodiscard]] static std::chrono::system_clock::time_point timestamp() noexcept
+        {
+            return std::chrono::system_clock::now();
+        }
+
+        [[nodiscard]] static std::thread::id thread_id() noexcept
+        {
+            return std::this_thread::get_id();
+        }
+    };
+
+    /** @brief Omits optional metadata on latency-sensitive logging paths. */
+    struct MinimalMetadataPolicy
+    {
+        [[nodiscard]] static constexpr std::chrono::system_clock::time_point timestamp() noexcept
+        {
+            return {};
+        }
+
+        [[nodiscard]] static constexpr std::thread::id thread_id() noexcept
+        {
+            return {};
+        }
+    };
+
+    template<typename Metadata>
+    concept LoggerMetadataPolicy = requires
+    {
+        { Metadata::timestamp() } noexcept -> std::same_as<std::chrono::system_clock::time_point>;
+        { Metadata::thread_id() } noexcept -> std::same_as<std::thread::id>;
     };
 
     /** @brief Converts a log level to a stable textual representation. */
@@ -119,18 +165,6 @@ namespace vosp::logger
     };
 
     /**
-     * @brief Non-owning log record for the direct high-throughput logging path.
-     * @warning message is valid only for the duration of the sink write callback.
-     */
-    struct FastLogEntry
-    {
-        Level level;
-        Category category;
-        std::uint32_t code;
-        std::string_view message;
-    };
-
-    /**
      * @brief Destination for formatted or structured log records.
      * @note A sink attached by reference must outlive the Logger that references it.
      */
@@ -150,13 +184,6 @@ namespace vosp::logger
     /** @brief Restricts a type to concrete log sink implementations. */
     template<typename Sink>
     concept SinkType = std::derived_from<std::remove_cvref_t<Sink>, ILogSink>;
-
-    /** @brief Restricts a type to a direct sink for FastLogger. */
-    template<typename Sink>
-    concept FastSink = requires(Sink& sink, const FastLogEntry& entry)
-    {
-        { sink.write(entry) } -> std::same_as<bool>;
-    };
 
     /**
      * @brief Abstract logging service.
@@ -249,7 +276,8 @@ namespace vosp::logger
      * @brief Thread-safe logger that broadcasts records to external or owned sinks.
      */
     template<LoggerPolicy Policy = AcceptAllPolicy,
-             LoggerDispatchPolicy Dispatch = SerializedSinkDispatch>
+             LoggerDispatchPolicy Dispatch = SerializedSinkDispatch,
+             LoggerMetadataPolicy Metadata = FullMetadataPolicy>
     class PolicyLogger final : public ILogger
     {
     private:
@@ -300,6 +328,7 @@ namespace vosp::logger
             }
 
             sinks_.push_back(SinkSlot{&sink, {}});
+            refresh_single_sink_fast_path();
             return true;
         }
 
@@ -326,6 +355,7 @@ namespace vosp::logger
             }
 
             sinks_.push_back(SinkSlot{raw_sink, std::move(sink)});
+            refresh_single_sink_fast_path();
             return true;
         }
 
@@ -352,6 +382,7 @@ namespace vosp::logger
             }
 
             sinks_.erase(it);
+            refresh_single_sink_fast_path();
             return true;
         }
 
@@ -386,11 +417,25 @@ namespace vosp::logger
             }
 
             const LogEntry entry{
-                std::chrono::system_clock::now(),
-                std::this_thread::get_id(),
+                Metadata::timestamp(),
+                Metadata::thread_id(),
                 level,
                 std::forward<ErrorValue>(error)
             };
+
+            // The common one-sink, externally-owned configuration does not
+            // require a registry lock. The sink lifetime contract already
+            // guarantees that an in-flight callback remains valid.
+            if (auto* const sink = single_non_owning_sink_.load(std::memory_order_acquire))
+            {
+                if constexpr (Dispatch::serializes_callbacks)
+                {
+                    const std::lock_guard callback_lock{callback_mutex_};
+                    return sink->write(entry);
+                }
+
+                return sink->write(entry);
+            }
 
             std::vector<SinkSlot> sinks;
             ILogSink* single_sink = nullptr;
@@ -442,9 +487,187 @@ namespace vosp::logger
             return accepted;
         }
 
+        void refresh_single_sink_fast_path() noexcept
+        {
+            ILogSink* sink = nullptr;
+            if (sinks_.size() == 1 && !sinks_.front().owner)
+            {
+                sink = sinks_.front().sink;
+            }
+
+            single_non_owning_sink_.store(sink, std::memory_order_release);
+        }
+
         std::mutex mutex_;
         std::recursive_mutex callback_mutex_;
         std::vector<SinkSlot> sinks_;
+        std::atomic<ILogSink*> single_non_owning_sink_ = nullptr;
+    };
+
+    /**
+     * @brief Asynchronous specialization of PolicyLogger with bounded backpressure.
+     * @note write() reports queue acceptance; sink failures are exposed separately.
+     */
+    template<LoggerPolicy Policy, LoggerMetadataPolicy Metadata>
+    class PolicyLogger<Policy, AsyncSinkDispatch, Metadata> final : public ILogger
+    {
+    public:
+        PolicyLogger()
+            : worker_([this](std::stop_token) { run(); })
+        {
+        }
+
+        template<SinkType... Sinks>
+        explicit PolicyLogger(Sinks&... sinks)
+            : backend_(sinks...), worker_([this](std::stop_token) { run(); })
+        {
+        }
+
+        template<SinkType Sink>
+        explicit PolicyLogger(std::shared_ptr<Sink> sink)
+            : backend_(std::move(sink)), worker_([this](std::stop_token) { run(); })
+        {
+        }
+
+        PolicyLogger(const PolicyLogger&) = delete;
+        PolicyLogger& operator=(const PolicyLogger&) = delete;
+
+        [[nodiscard]] bool attach(ILogSink& sink) override { return backend_.attach(sink); }
+        [[nodiscard]] bool attach(std::shared_ptr<ILogSink> sink)
+        {
+            return backend_.attach(std::move(sink));
+        }
+        [[nodiscard]] bool detach(ILogSink& sink) override { return backend_.detach(sink); }
+
+        [[nodiscard]] bool write(Level level, const Error& error) override
+        {
+            return enqueue(level, error);
+        }
+
+        [[nodiscard]] bool write_owned(Level level, Error error) override
+        {
+            return enqueue(level, std::move(error));
+        }
+
+        /** @brief Waits until every accepted record has reached the sink callbacks. */
+        void flush()
+        {
+            std::unique_lock lock{mutex_};
+            drained_.wait(lock, [this] { return queue_.empty() && !batch_active_; });
+        }
+
+        [[nodiscard]] std::size_t failed_records() const noexcept
+        {
+            return failed_records_.load(std::memory_order_relaxed);
+        }
+
+        void shutdown() noexcept
+        {
+            const std::lock_guard shutdown_lock{shutdown_mutex_};
+            {
+                const std::lock_guard lock{mutex_};
+                stopping_ = true;
+            }
+            records_available_.notify_all();
+            space_available_.notify_all();
+            if (worker_.joinable() && worker_.get_id() != std::this_thread::get_id())
+            {
+                worker_.join();
+            }
+        }
+
+        ~PolicyLogger() noexcept { shutdown(); }
+
+    private:
+        struct PendingRecord
+        {
+            Level level;
+            Error error;
+        };
+
+        template<typename ErrorValue>
+        [[nodiscard]] bool enqueue(Level level, ErrorValue&& error)
+        {
+            if (!Policy::accepts(level))
+            {
+                return true;
+            }
+
+            std::unique_lock lock{mutex_};
+            space_available_.wait(lock, [this]
+            {
+                return stopping_ || queue_.size() < AsyncSinkDispatch::queue_capacity;
+            });
+            if (stopping_)
+            {
+                return false;
+            }
+
+            queue_.push_back(PendingRecord{level, std::forward<ErrorValue>(error)});
+            lock.unlock();
+            records_available_.notify_one();
+            return true;
+        }
+
+        void run() noexcept
+        {
+            std::deque<PendingRecord> batch;
+            while (true)
+            {
+                {
+                    std::unique_lock lock{mutex_};
+                    records_available_.wait(lock, [this]
+                    {
+                        return stopping_ || !queue_.empty();
+                    });
+                    if (queue_.empty() && stopping_)
+                    {
+                        drained_.notify_all();
+                        return;
+                    }
+                    batch.swap(queue_);
+                    batch_active_ = true;
+                }
+                space_available_.notify_all();
+
+                for (auto& record : batch)
+                {
+                    try
+                    {
+                        if (!backend_.write_owned(record.level, std::move(record.error)))
+                        {
+                            failed_records_.fetch_add(1, std::memory_order_relaxed);
+                        }
+                    }
+                    catch (...)
+                    {
+                        failed_records_.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+                batch.clear();
+
+                {
+                    const std::lock_guard lock{mutex_};
+                    batch_active_ = false;
+                    if (queue_.empty())
+                    {
+                        drained_.notify_all();
+                    }
+                }
+            }
+        }
+
+        PolicyLogger<Policy, ParallelSinkDispatch, Metadata> backend_;
+        mutable std::mutex mutex_;
+        std::condition_variable records_available_;
+        std::condition_variable space_available_;
+        std::condition_variable drained_;
+        std::deque<PendingRecord> queue_;
+        std::jthread worker_;
+        std::mutex shutdown_mutex_;
+        std::atomic<std::size_t> failed_records_ = 0;
+        bool stopping_ = false;
+        bool batch_active_ = false;
     };
 
     /** @brief Backward-compatible logger with no level filtering. */
@@ -455,46 +678,6 @@ namespace vosp::logger
      * @note Unlike Logger, concurrent calls may enter an attached sink simultaneously.
      */
     using ParallelLogger = PolicyLogger<AcceptAllPolicy, ParallelSinkDispatch>;
-
-    /**
-     * @brief Direct logger optimized for a fixed, thread-safe sink type.
-     * @tparam Sink Concrete sink type accepting FastLogEntry.
-     * @tparam Policy Compile-time log-level filter.
-     * @warning The sink must outlive this logger and be thread-safe when used concurrently.
-     * @note This synchronous path does not capture a timestamp or thread id and never owns
-     *       the message. Use Logger or ParallelLogger when dynamic sinks or full metadata
-     *       are required.
-     */
-    template<FastSink Sink, LoggerPolicy Policy = AcceptAllPolicy>
-    class FastLogger final
-    {
-    public:
-        explicit FastLogger(Sink& sink) noexcept
-            : sink_(sink)
-        {
-        }
-
-        /**
-         * @brief Publishes a borrowed record without allocating an Error.
-         * @warning The sink must not retain message after this call returns.
-         */
-        [[nodiscard]] bool log(
-            Level level,
-            Category category,
-            std::uint32_t code,
-            std::string_view message)
-        {
-            if (!Policy::accepts(level))
-            {
-                return true;
-            }
-
-            return sink_.write(FastLogEntry{level, category, code, message});
-        }
-
-    private:
-        Sink& sink_;
-    };
 
     /**
      * @brief Thread-safe text sink writing one record per line.

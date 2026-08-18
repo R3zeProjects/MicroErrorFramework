@@ -83,29 +83,30 @@ reference, not an apples-to-apples replacement for the framework API.
 ## Logger comparison with spdlog
 
 The logger component was compared with `spdlog v1.15.3` using its in-memory
-`null_sink`, 100,000 formatted records, and a four-worker workload. The values
+`null_sink`, 1,000,000 formatted records, and a four-worker workload. The values
 below are medians from five release launches on the documented Windows host:
 
 ```text
-micro_single records=100000 elapsed_us=25658 records_per_second=3.89742e+06
-spdlog_single records=100000 elapsed_us=6498 records_per_second=1.53894e+07
-micro_multi records=100000 elapsed_us=49593 records_per_second=2.01641e+06
-micro_parallel_multi records=100000 elapsed_us=22111 records_per_second=4.52264e+06
-fast_single records=100000 elapsed_us=18226 records_per_second=5.48667e+06
-fast_multi records=100000 elapsed_us=8664 records_per_second=1.1542e+07
-spdlog_multi records=100000 elapsed_us=3058 records_per_second=3.27011e+07
+micro_single records=1000000 elapsed_us=249524 records_per_second=4.00763e+06
+spdlog_single records=1000000 elapsed_us=64981 records_per_second=1.53891e+07
+micro_multi records=1000000 elapsed_us=450967 records_per_second=2.21746e+06
+micro_parallel_multi records=1000000 elapsed_us=97560 records_per_second=1.02501e+07
+policy_single records=1000000 elapsed_us=201868 records_per_second=4.95373e+06
+policy_multi records=1000000 elapsed_us=77185 records_per_second=1.29559e+07
+policy_async records=1000000 elapsed_us=219068 records_per_second=4.56479e+06
+spdlog_multi records=1000000 elapsed_us=21343 records_per_second=4.68538e+07
 ```
 
 This is a narrow throughput comparison. `spdlog` uses a null sink, while
 MicroErrorSystem creates typed error/log-entry objects and invokes its sink
 callback contract. `Logger` serializes callbacks for generic sink safety;
 `ParallelLogger` is an explicit opt-in mode for sinks whose `write` methods are
-thread-safe, and lifts this workload by 2.24x over the serialized default. The
-`FastLogger<Sink>` is a direct, synchronous API for a fixed thread-safe sink;
-it avoids dynamic sink management, virtual dispatch, full metadata capture, and
-`Error` allocation by borrowing the message during `write()`. Its four-worker
-median was 11.542M records/s. The result does not invalidate the framework's
-error registration, routing, policy, or lifecycle features.
+thread-safe. The common one-sink path avoids the registry mutex, and the same
+`PolicyLogger` can use `MinimalMetadataPolicy` to omit timestamp/thread-id
+capture. Its four-worker median was 12.9559M records/s. The bounded async mode
+delivered 4.56479M records/s end-to-end, including queueing and draining. The result does not
+invalidate the framework's error registration, routing, policy, or lifecycle
+features.
 
 ## Fuzzing
 

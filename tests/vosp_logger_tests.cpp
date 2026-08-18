@@ -55,32 +55,6 @@ namespace
         std::atomic<std::uint32_t> writes_ = 0;
     };
 
-    /** @brief Direct thread-safe sink used to verify FastLogger. */
-    class FastTestSink final
-    {
-    public:
-        [[nodiscard]] bool write(const FastLogEntry& entry)
-        {
-            last_code_.store(entry.code, std::memory_order_relaxed);
-            writes_.fetch_add(1, std::memory_order_relaxed);
-            return true;
-        }
-
-        [[nodiscard]] std::uint32_t writes() const noexcept
-        {
-            return writes_.load(std::memory_order_relaxed);
-        }
-
-        [[nodiscard]] std::uint32_t last_code() const noexcept
-        {
-            return last_code_.load(std::memory_order_relaxed);
-        }
-
-    private:
-        std::atomic<std::uint32_t> writes_ = 0;
-        std::atomic<std::uint32_t> last_code_ = 0;
-    };
-
     /** @brief Sink that mutates logger membership while handling a record. */
     class ReentrantSink final : public ILogSink
     {
@@ -149,6 +123,22 @@ namespace
                check(sink.entries.empty(), "below-threshold record is dropped") &&
                check(logger.warning(error), "warning passes policy") &&
                check(sink.entries.size() == 1, "policy logger delivery");
+    }
+
+    /** @brief Verifies that the latency policy omits optional metadata. */
+    bool test_minimal_metadata_policy()
+    {
+        TestSink sink;
+        PolicyLogger<AcceptAllPolicy, ParallelSinkDispatch, MinimalMetadataPolicy> logger{sink};
+
+        return check(
+                   logger.info(Error{Category::DATABASE, 3005, "minimal metadata"}),
+                   "minimal metadata write") &&
+               check(sink.entries.size() == 1, "minimal metadata delivery") &&
+               check(
+                   sink.entries.front().timestamp == std::chrono::system_clock::time_point{},
+                   "minimal timestamp") &&
+               check(sink.entries.front().thread_id == std::thread::id{}, "minimal thread id");
     }
 
     /** @brief Verifies sink callbacks do not run under the logger mutex. */
@@ -254,18 +244,25 @@ namespace
         return check(weak_sink.expired(), "owned sink is released after detach");
     }
 
-    /** @brief Verifies direct logging without Error allocation or dynamic dispatch. */
-    bool test_fast_logger()
+    /** @brief Verifies bounded asynchronous delivery and flush semantics. */
+    bool test_async_logger_policy()
     {
-        FastTestSink sink;
-        FastLogger logger{sink};
+        ConcurrentTestSink sink;
+        PolicyLogger<AcceptAllPolicy, AsyncSinkDispatch, MinimalMetadataPolicy> logger{sink};
 
-        return check(
-                   logger.log(Level::INFO, Category::DATABASE, 5001, "direct"),
-                   "fast logger write") &&
-               check(sink.writes() == 1, "fast logger count") &&
-               check(sink.last_code() == 5001, "fast logger entry");
+        for (std::uint32_t code = 0; code < 256; ++code)
+        {
+            if (!logger.info(Error{Category::NETWORK, code, "async owned record"}))
+            {
+                return check(false, "async logger accepts record");
+            }
+        }
+
+        logger.flush();
+        return check(sink.writes() == 256, "async logger delivery") &&
+               check(logger.failed_records() == 0, "async logger sink failures");
     }
+
 }
 
 int main()
@@ -274,9 +271,10 @@ int main()
            test_logger_lifecycle() &&
            test_console_sink() &&
            test_logger_policy() &&
+           test_minimal_metadata_policy() &&
            test_reentrant_sink() &&
            test_concurrent_logging() &&
            test_parallel_logging() &&
            test_owned_sink_lifetime() &&
-           test_fast_logger() ? 0 : 1;
+           test_async_logger_policy() ? 0 : 1;
 }
