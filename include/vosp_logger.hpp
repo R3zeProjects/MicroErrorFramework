@@ -556,9 +556,9 @@ namespace vosp::logger
             {
                 const std::lock_guard lock{mutex_};
                 stopping_ = true;
+                records_available_.notify_all();
+                space_available_.notify_all();
             }
-            records_available_.notify_all();
-            space_available_.notify_all();
             if (worker_.joinable() && worker_.get_id() != std::this_thread::get_id())
             {
                 worker_.join();
@@ -593,7 +593,6 @@ namespace vosp::logger
             }
 
             queue_.push_back(PendingRecord{level, std::forward<ErrorValue>(error)});
-            lock.unlock();
             records_available_.notify_one();
             return true;
         }
@@ -616,8 +615,8 @@ namespace vosp::logger
                     }
                     batch.swap(queue_);
                     batch_active_ = true;
+                    space_available_.notify_all();
                 }
-                space_available_.notify_all();
 
                 for (auto& record : batch)
                 {
@@ -652,11 +651,12 @@ namespace vosp::logger
         std::condition_variable space_available_;
         std::condition_variable drained_;
         std::deque<PendingRecord> queue_;
-        std::jthread worker_;
         std::mutex shutdown_mutex_;
         std::atomic<std::size_t> failed_records_ = 0;
         bool stopping_ = false;
         bool batch_active_ = false;
+        // Start only after every state value observed by run() is initialized.
+        std::jthread worker_;
     };
 
     /** @brief Backward-compatible logger with no level filtering. */

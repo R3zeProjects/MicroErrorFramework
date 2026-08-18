@@ -32,10 +32,13 @@ the version policy described in `docs/API_CONTRACTS.md`.
   the installed CMake package resolves it before importing `vosp::vosp`.
 - Minimal logger metadata no longer marks the non-literal `std::thread::id`
   return type `constexpr`, restoring portability across standard libraries.
-- Helgrind now exercises logger concurrency without libstdc++ `std::future`
-  false positives and suppresses only the standards-valid condition-variable
-  notification-after-unlock diagnostic; ThreadSanitizer remains the
-  authoritative full race gate.
+- The async logger initializes every worker-visible state field before starting
+  its worker, eliminating a constructor-time race detected independently by
+  ThreadSanitizer and Helgrind.
+- Async logger condition-variable notifications now share the state mutex,
+  giving Helgrind an explicit happens-before relationship without suppressions.
+- Clang ASan/UBSan and LibFuzzer use a matching libstdc++ 14 ABI; normal Clang
+  and clang-tidy jobs retain libc++ coverage.
 
 ## [0.1.0-beta] - 2026-08-18
 
