@@ -37,8 +37,9 @@ the version policy described in `docs/API_CONTRACTS.md`.
   ThreadSanitizer and Helgrind.
 - Async logger condition-variable notifications now share the state mutex,
   giving Helgrind an explicit happens-before relationship without suppressions.
-- Clang ASan/UBSan and LibFuzzer use a matching libstdc++ 14 ABI; normal Clang
-  and clang-tidy jobs retain libc++ coverage.
+- Clang 19 ASan/UBSan and LibFuzzer use a matching libstdc++ 14 ABI and the
+  standard C++20 Concepts feature-test value required by `<expected>`; normal
+  Clang and clang-tidy jobs retain libc++ coverage.
 
 ## [0.1.0-beta] - 2026-08-18
 

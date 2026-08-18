@@ -90,12 +90,12 @@ jobs:
       - name: Install toolchain
         run: >-
           sudo apt-get update && sudo apt-get install -y
-          clang ninja-build g++-14
+          clang-19 ninja-build g++-14
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_CXX_COMPILER=clang++-19
           -DBUILD_TESTING=ON
           -DBUILD_BENCHMARKS=ON
           -DENABLE_SANITIZERS=ON
@@ -144,12 +144,12 @@ jobs:
       - name: Install toolchain
         run: >-
           sudo apt-get update && sudo apt-get install -y
-          clang ninja-build g++-14
+          clang-19 ninja-build g++-14
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_CXX_COMPILER=clang++-19
           -DBUILD_FUZZERS=ON
       - name: Build
         run: cmake --build build --parallel
