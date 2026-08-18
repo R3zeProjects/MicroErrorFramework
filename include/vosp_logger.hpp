@@ -120,7 +120,7 @@ namespace vosp::logger
 
     /**
      * @brief Destination for formatted or structured log records.
-     * @note A sink must outlive the Logger that references it.
+     * @note A sink attached by reference must outlive the Logger that references it.
      */
     class ILogSink
     {

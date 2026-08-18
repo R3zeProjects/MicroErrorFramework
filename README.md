@@ -499,7 +499,8 @@ MicroErrorSystem/
 ## Current limitations
 
 - The API is version `0.1.0` and may evolve before `1.0.0`.
-- Registers and logger sinks are non-owning dependencies.
+- Registers are non-owning; logger sinks are either non-owning references or
+  logger-owned `std::shared_ptr` instances.
 - A running worker task cannot be forcefully interrupted safely.
 - `Category::NONE` is not routed to a specialized category register.
 - `Error` stores its message in `std::string`, so predefined errors are
