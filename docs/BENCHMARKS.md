@@ -60,8 +60,34 @@ registration and synchronization according to the selected test case.
 
 - Release + CTest: 3/3 native tests passed;
 - Release + external integration + benchmark: 4/4 CTest tests passed;
+- local `fmt` + `cpp-httplib` HTTP integration: 4/4 CTest tests passed;
 - Clang AddressSanitizer + UndefinedBehaviorSanitizer: 3/3 native tests passed;
 - extended Clang warnings and C++23 syntax checks completed without errors.
+
+## Baseline comparison
+
+The comparison target measures the framework against raw standard-library
+containers under the same 100,000-unique-insert workload:
+
+```text
+raw_unordered_set operations_per_second=4.85437e+06
+memory_register operations=100000 operations_per_second=4.97711e+06
+raw_mutex_sets operations_per_second=8.09512e+06
+memory_register_parallel operations_per_second=1.30309e+07
+```
+
+The raw baseline intentionally omits category validation, capacity handling,
+error propagation, routing, and lifecycle semantics. It is an overhead
+reference, not an apples-to-apples replacement for the framework API.
+
+## Fuzzing
+
+- Ubuntu CI runs the coverage-guided LibFuzzer target for 10,000 inputs;
+- the Windows Clang run completed the deterministic sanitizer fuzz smoke target
+  for 100,000 generated inputs;
+- the Windows LibFuzzer link was not used because the installed runtime and
+  compiler disagree on the `annotate_string` linker ABI. The portable
+  LibFuzzer path remains covered by the Ubuntu job.
 
 ## CI quality gates
 

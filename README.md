@@ -1,141 +1,440 @@
 # MicroErrorSystem
 
-Документация: [русский](docs/README.ru.md) · [English](docs/README.en.md) · [简体中文](docs/README.zh-CN.md)
+**MicroErrorSystem** is a C++23 micro-framework for building a
+system-independent error handling and logging contour.
 
-API version: `0.1.0` · [Changelog](../CHANGELOG.md) · [Benchmark report](docs/BENCHMARKS.md)
+It provides one public API for classifying, registering, routing, logging,
+and asynchronously processing errors without coupling the application to a
+particular operating system or domain.
 
-Заготовка модульной системы регистрации ошибок на C++23.
+> **Main idea:** an error-control and logging contour independent of the host system.
 
-## Возможности
+![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
+![API](https://img.shields.io/badge/API-0.1.0-informational)
+![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-- типизированная ошибка `vosp::error::Error`;
-- категории `NETWORK`, `DATABASE`, `FILESYSTEM`;
-- интерфейс регистра `IRegister`;
-- маршрутизация ошибок через `Handler`;
-- compile-time режимы `SingleThreaded`, `MultiThreaded` и `Async`;
-- потокобезопасный logger с подключаемыми sink;
-- единая точка подключения `vosp.hpp`;
-- benchmark и опциональные ASan/UBSan-проверки;
-- опциональная LibFuzzer-цель для Linux/macOS с Clang;
-- opt-in интеграционный стресс-тест с внешним `nlohmann/json`;
-- `IndustrialWorkerPool` с фиксированным числом worker-потоков;
-- bounded-очередь с backpressure и лимитами до 1024 workers/queued tasks;
-- реальная отмена ожидающих задач через `clear_queue()` и `CANCEL_PENDING`;
-- compile-time policy-фильтр логгера;
-- `Result<T> = std::expected<T, Error>`;
-- предопределённые ошибки в `vosp::error::predefined`;
-- тесты через CTest без внешних зависимостей.
+## Why this project exists
 
-## Требования
+Application code often mixes domain logic, error storage, logging, thread
+management, and shutdown handling. MicroErrorSystem separates these concerns
+behind small interfaces and compile-time policies.
 
-- CMake 3.25 или новее;
-- компилятор с поддержкой C++23;
-- стандартная библиотека с `std::expected`.
+The framework is intentionally small and header-only. It is suitable for
+experiments, infrastructure components, services, and as a reusable error
+control layer in larger C++ systems.
 
-## Сборка
+## Features
 
-Из корня репозитория:
+- strongly typed `Error`, `Result<T>`, and `OperationResult` based on
+  `std::expected`;
+- category-specific registers with `IRegister` and `CategoryRegister`;
+- `MemoryRegister` with thread-safe storage and bounded capacity;
+- category routing through `Handler` and `ConcurrentHandler`;
+- compile-time single-threaded, multi-threaded, and asynchronous systems;
+- `IndustrialWorkerPool` with bounded workers and bounded queue;
+- blocking backpressure when the queue is full;
+- cooperative cancellation with `std::stop_token`;
+- queue cleanup and configurable drain/cancel shutdown behavior;
+- extensible logger with custom sinks and compile-time filtering policies;
+- RAII-based ownership and safe asynchronous lifetime handling;
+- CTest, stress tests, AddressSanitizer, UndefinedBehaviorSanitizer,
+  ThreadSanitizer, LibFuzzer, Valgrind, coverage, and Callgrind workflows;
+- external integration workloads using pinned third-party repositories.
 
-```text
-cmake -S MicroErrorSystem -B MicroErrorSystem/cmake-build-debug -DBUILD_TESTING=ON
-cmake --build MicroErrorSystem/cmake-build-debug --parallel
-```
-
-Benchmark:
-
-```text
-cmake -S MicroErrorSystem -B MicroErrorSystem/cmake-build-debug -DBUILD_BENCHMARKS=ON
-cmake --build MicroErrorSystem/cmake-build-debug --parallel
-MicroErrorSystem/cmake-build-debug/MicroErrorSystemBenchmark.exe
-```
-
-Sanitizers на Clang/Ninja:
+## Architecture
 
 ```text
-cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/cmake-build-asan -DBUILD_TESTING=ON -DENABLE_SANITIZERS=ON
-cmake --build MicroErrorSystem/cmake-build-asan --parallel
-ctest --test-dir MicroErrorSystem/cmake-build-asan --output-on-failure
+Error
+  │
+  ▼
+Handler ─────► CategoryRegister ─────► Error storage
+  │
+  ├──────────► Result<T> / OperationResult
+  ├──────────► Logger ─────► Sink
+  └──────────► AsyncSystem ─────► IndustrialWorkerPool
 ```
 
-Fuzzing на Unix-платформах с Clang:
-
-```text
-cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/cmake-build-fuzz -DBUILD_FUZZERS=ON
-cmake --build MicroErrorSystem/cmake-build-fuzz --parallel
-MicroErrorSystem/cmake-build-fuzz/MicroErrorSystemFuzzer -runs=10000
-```
-
-Интеграционный стресс-тест с third-party workload:
-
-```text
-cmake -S MicroErrorSystem -B MicroErrorSystem/cmake-build-external -DBUILD_TESTING=ON -DBUILD_EXTERNAL_STRESS_TESTS=ON
-cmake --build MicroErrorSystem/cmake-build-external --parallel
-ctest --test-dir MicroErrorSystem/cmake-build-external -R NlohmannStressTests --output-on-failure
-```
-
-Тест фиксирует `nlohmann/json` на `v3.12.0`, не добавляет его в runtime API и
-использует его parser как внешний workload для проверки error-контуров.
-
-## Запуск тестов
-
-```text
-ctest --test-dir MicroErrorSystem/cmake-build-debug --output-on-failure
-```
-
-Тесты проверяют:
-
-- геттеры и сравнение `Error`;
-- наличие категории;
-- успешные и ошибочные `Result<T>`;
-- маршрутизацию `Handler`;
-- добавление и удаление ошибок в регистрах.
-- лимиты worker pool, backpressure и отмену queued-задач;
-- фильтрацию logger policy.
-
-## Быстрый пример
+The system mode is selected by types rather than runtime flags:
 
 ```cpp
-#include "vosp_error.hpp"
+using Single = vosp::error::SingleThreadedSystem<RegisterA, RegisterB>;
+using Multi  = vosp::error::MultiThreadedSystem<RegisterA, RegisterB>;
+using Async  = vosp::error::AsyncSystem<Executor, RegisterA, RegisterB>;
+```
+
+## Why policies are needed
+
+Policies keep execution and logging decisions explicit at compile time:
+
+- `TypeRegister` selects the storage/synchronization model;
+- `TypeHandler` selects routing behavior for that model;
+- `LoggerPolicy` decides which log levels reach sinks;
+- `MinimumLevelPolicy<Level::WARNING>` removes lower-severity records before
+  sink callbacks, reducing work and output volume.
+
+This avoids runtime mode switches in hot paths and lets the compiler reject an
+invalid policy type. Policies are intentionally small stateless types, so they
+do not add per-object configuration storage. They should describe behavior,
+not own resources; ownership remains explicit in registers, sinks, executors,
+and worker pools.
+
+Registers and logger sinks are non-owning dependencies. They must outlive the
+objects that use them. The built-in asynchronous system keeps its handler state
+alive for submitted operations so destroying the system does not invalidate
+pending futures.
+
+## Requirements
+
+- CMake 3.25 or newer;
+- a compiler with C++23 support;
+- a standard library implementation providing `std::expected`;
+- Git for optional external integration workloads.
+
+The project is tested on Windows and Ubuntu in GitHub Actions. The LibFuzzer
+configuration targets Unix-like platforms with Clang.
+
+## Quick start
+
+From the repository root:
+
+```bash
+cmake -S MicroErrorSystem -B MicroErrorSystem/build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTING=ON
+cmake --build MicroErrorSystem/build --parallel
+ctest --test-dir MicroErrorSystem/build --output-on-failure
+```
+
+On Windows, the executable suffix is `.exe`.
+
+## Minimal example
+
+```cpp
+#include "vosp.hpp"
 
 using namespace vosp::error;
 
-class NetworkRegister final : public CategoryRegister<Category::NETWORK>
-{
-public:
-    OperationResult add(const Error& error) override;
-    OperationResult remove(const Error& error) override;
+MemoryRegister<Category::NETWORK> network;
+SingleThreadedSystem<decltype(network)> system{network};
+
+const Error error{
+    Category::NETWORK,
+    1001,
+    "Connection refused"
 };
 
-NetworkRegister network;
-Handler handler{network};
+const OperationResult result = system.add(error);
+if (!result) {
+    // The register rejected the error or no matching category was found.
+    const Error& reason = result.error();
+}
 
-const Error error{Category::NETWORK, 100, "Connection failed"};
-const OperationResult registered = handler.add(error);
+if (network.contains(error)) {
+    system.remove(error);
+}
 ```
 
-`Handler` не владеет регистрами. Все переданные регистры должны жить дольше
-объекта `Handler`. Для одной категории следует передавать только один регистр;
-если регистров несколько, используется первый совпавший.
+For value-returning operations:
 
-## Структура
+```cpp
+Result<int> read_attempts()
+{
+    return 3;
+}
+
+const Result<int> result = read_attempts();
+if (result) {
+    const int attempts = *result;
+}
+```
+
+## Industrial worker pool
+
+```cpp
+#include "vosp.hpp"
+
+vosp::async::IndustrialWorkerPool pool{
+    4,    // worker count
+    128   // queue capacity
+};
+
+auto future = pool.submit([] {
+    return vosp::error::OperationResult{};
+});
+
+const vosp::error::OperationResult result = future.get();
+pool.shutdown(vosp::async::ShutdownMode::DRAIN);
+```
+
+The hard limits are 1,024 workers and 1,024 queued tasks. `submit()` applies
+blocking backpressure. `clear_queue()` completes pending futures with a
+cancellation error. A running task is not forcefully interrupted; use
+`submit_cancellable()` and inspect its `std::stop_token` for cooperative
+cancellation.
+
+## Logging
+
+```cpp
+#include "vosp.hpp"
+#include <iostream>
+
+vosp::logger::ConsoleSink console{std::cout};
+vosp::logger::Logger logger{console};
+
+logger.error(vosp::error::Error{
+    vosp::error::Category::NETWORK,
+    1001,
+    "Connection refused"
+});
+```
+
+Custom sinks implement `ILogSink`. `PolicyLogger` supports compile-time
+filtering, for example `MinimumLevelPolicy<Level::WARNING>`. Sink ownership is
+external and must outlive the logger.
+
+## Build profiles
+
+### Benchmarks
+
+```bash
+cmake -S MicroErrorSystem -B MicroErrorSystem/build-bench \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_BENCHMARKS=ON
+cmake --build MicroErrorSystem/build-bench --parallel
+MicroErrorSystem/build-bench/MicroErrorSystemBenchmark
+```
+
+### AddressSanitizer and UndefinedBehaviorSanitizer
+
+```bash
+cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-asan \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_TESTING=ON \
+  -DENABLE_SANITIZERS=ON
+cmake --build MicroErrorSystem/build-asan --parallel
+ctest --test-dir MicroErrorSystem/build-asan --output-on-failure
+```
+
+### ThreadSanitizer
+
+```bash
+cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-tsan \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_TESTING=ON \
+  -DENABLE_THREAD_SANITIZER=ON
+cmake --build MicroErrorSystem/build-tsan --parallel
+ctest --test-dir MicroErrorSystem/build-tsan --output-on-failure
+```
+
+### Coverage
+
+```bash
+cmake -S MicroErrorSystem -B MicroErrorSystem/build-coverage \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_TESTING=ON \
+  -DENABLE_COVERAGE=ON
+cmake --build MicroErrorSystem/build-coverage --parallel
+ctest --test-dir MicroErrorSystem/build-coverage --output-on-failure
+gcovr --root MicroErrorSystem \
+  --filter 'MicroErrorSystem/include/.*' \
+  --txt --xml-pretty --output coverage.xml
+```
+
+Coverage is a diagnostic signal. Thread-safety and lifecycle correctness are
+also checked with stress tests, ThreadSanitizer, and targeted unit tests.
+
+### LibFuzzer
+
+```bash
+cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-fuzz \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_FUZZERS=ON
+cmake --build MicroErrorSystem/build-fuzz --parallel
+MicroErrorSystem/build-fuzz/MicroErrorSystemFuzzer -runs=10000
+```
+
+For Windows or toolchains without a compatible LibFuzzer runtime, the
+repository also provides a sanitizer-backed deterministic smoke target:
+
+```bash
+cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-fuzz-smoke \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_FUZZ_SMOKE=ON \
+  -DBUILD_TESTING=OFF
+cmake --build MicroErrorSystem/build-fuzz-smoke --parallel
+MicroErrorSystem/build-fuzz-smoke/MicroErrorSystemFuzzSmoke
+```
+
+The smoke target executes 100,000 generated inputs through the same fuzz
+harness under AddressSanitizer and UndefinedBehaviorSanitizer. It complements
+the coverage-guided LibFuzzer job used on Ubuntu CI.
+
+## Real benchmark results
+
+The following results were collected from a local Release build on:
+
+- Windows 10 Pro;
+- AMD Ryzen 7 PRO 1700X, 8 physical cores / 16 logical processors;
+- 31.95 GiB RAM;
+- Clang 22.1.6;
+- benchmark date: 2026-08-17.
+
+Native API workload:
+
+```text
+single operations=100000 elapsed_us=27530 operations_per_second=3.6324e+06
+multi workers=3 operations=99999 elapsed_us=22059 operations_per_second=4.53325e+06
+async operations=1000 elapsed_us=4087 operations_per_second=244678
+```
+
+External integration workload using the official `nlohmann/json` repository,
+pinned to `v3.12.0`:
+
+```text
+external_repo=nlohmann/json@v3.12.0 documents=20000 malformed=6667
+parse_only elapsed_us=178771 operations_per_second=111875
+parse_and_error_control workers=4 elapsed_us=89050 operations_per_second=224593
+```
+
+A later verification run on the same machine produced:
+
+```text
+parse_only elapsed_us=265600 operations_per_second=75301.2
+parse_and_error_control workers=4 elapsed_us=83821 operations_per_second=238604
+```
+
+These are reproducible local measurements, not performance guarantees. Results
+depend on CPU frequency policy, compiler, build mode, dependency version,
+workload composition, and background processes. Full methodology is available
+in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+### Baseline comparison
+
+The repository also compares the public `MemoryRegister` path with a raw
+`std::unordered_set<Error, ErrorHash>` baseline using the same 100,000-insert
+workload. One additional Release run produced:
+
+```text
+raw_unordered_set operations_per_second=4.85437e+06
+memory_register operations=100000 operations_per_second=4.97711e+06
+raw_mutex_sets operations_per_second=8.09512e+06
+memory_register_parallel operations_per_second=1.30309e+07
+```
+
+The baseline is intentionally low-level and does not provide category
+validation, capacity errors, `Result` propagation, routing, or lifecycle
+contracts. The numbers therefore describe overhead under this workload; they
+do not establish that the framework is universally faster than a raw container.
+Run it with `-DBUILD_BENCHMARKS=ON` using the
+`MicroErrorSystemComparisonBenchmark` target.
+
+### External HTTP integration workload
+
+The local integration combines `fmt 11.2.0`, `cpp-httplib v0.18.0`, and
+MicroErrorSystem's `MultiThreadedSystem`. Four workers issue requests against a
+local HTTP server and route failed responses into a network error register.
+
+```text
+external_local_integration repository=fmt@11.2.0+cpp-httplib@v0.18.0
+requests=1000 successful=500 recorded_failures=500
+```
+
+The workload passed as `4/4` CTest tests in the local integration profile.
+It measures integration correctness and concurrent error routing; it is not a
+general-purpose HTTP server benchmark.
+
+## External repository testing
+
+The current integration test uses the official MIT-licensed
+[`nlohmann/json`](https://github.com/nlohmann/json) repository as a real parser
+workload. It processes 20,000 documents, classifies malformed input, and routes
+the resulting errors through the framework. The third-party library is used only
+by the optional test and benchmark targets; it is not part of the runtime API.
+
+Configure and run it with:
+
+```bash
+cmake -S MicroErrorSystem -B MicroErrorSystem/build-external \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTING=ON \
+  -DBUILD_BENCHMARKS=ON \
+  -DBUILD_EXTERNAL_STRESS_TESTS=ON
+cmake --build MicroErrorSystem/build-external --parallel
+ctest --test-dir MicroErrorSystem/build-external --output-on-failure
+MicroErrorSystem/build-external/MicroErrorSystemExternalBenchmark
+```
+
+Additional external workloads can be placed under `third_party/workloads` and
+connected through optional CMake targets. They should be pinned to a tag or
+commit and must remain outside the public runtime dependency graph.
+
+The local workload set currently contains shallow clones of:
+
+| Repository | Revision | Intended workload |
+| --- | --- | --- |
+| [`nlohmann/json`](https://github.com/nlohmann/json) | `v3.12.0` | malformed-input classification and JSON parsing |
+| [`fmtlib/fmt`](https://github.com/fmtlib/fmt) | `11.2.0` | high-throughput formatting and log-message generation |
+| [`yhirose/cpp-httplib`](https://github.com/yhirose/cpp-httplib) | `v0.18.0` | concurrent request/error-path workload |
+
+The `nlohmann/json` workload is wired into the external CMake stress target.
+The `fmt` and `cpp-httplib` repositories are wired into an opt-in local HTTP
+integration target. Their source trees are ignored by Git and are not shipped
+as runtime dependencies.
+
+## Verification status
+
+The project currently includes:
+
+- native Release tests: `3/3` passed;
+- external integration tests: `4/4` passed;
+- local `fmt` + `cpp-httplib` integration: `4/4` passed;
+- Clang ASan/UBSan tests: `3/3` passed;
+- extended C++23 warning and syntax checks without errors;
+- LibFuzzer smoke test configuration;
+- Valgrind Memcheck and Helgrind CI jobs;
+- GCC coverage and Callgrind CI artifacts;
+- Windows and Ubuntu CI build/test matrix.
+
+## Repository layout
 
 ```text
 MicroErrorSystem/
-├── include/vosp_error.hpp       # публичный header-only API
-├── tests/vosp_error_tests.cpp   # функциональные тесты
-├── CMakeLists.txt               # сборка и CTest
-└── docs/ARCHITECTURE.md        # архитектурные ограничения и точки расширения
+├── include/
+│   ├── vosp.hpp                 # single public entry point
+│   ├── vosp_error.hpp           # Error, Result, registers and systems
+│   ├── vosp_logger.hpp          # logger, policies and sinks
+│   └── vosp_worker_pool.hpp     # bounded asynchronous worker pool
+├── tests/                       # unit, concurrency and external stress tests
+├── benchmarks/                  # native and third-party benchmarks
+├── fuzz/                        # LibFuzzer target
+├── docs/
+│   ├── ARCHITECTURE.md
+│   └── BENCHMARKS.md
+├── CMakeLists.txt
+└── .github/workflows/ci.yml
 ```
 
-## Расширение
+## Current limitations
 
-Для добавления категории:
+- The API is version `0.1.0` and may evolve before `1.0.0`.
+- Registers and logger sinks are non-owning dependencies.
+- A running worker task cannot be forcefully interrupted safely.
+- `Category::NONE` is not routed to a specialized category register.
+- `Error` stores its message in `std::string`, so predefined errors are
+  `inline const` values rather than `inline constexpr` objects.
+- Benchmark values are machine-dependent and should be compared only under the
+  same toolchain and workload.
 
-1. добавить значение в `Category`;
-2. создать класс-наследник `CategoryRegister<категория>`;
-3. реализовать `add` и `remove`;
-4. передать регистр в `Handler`;
-5. добавить тест маршрутизации.
+## Documentation
 
-Подробнее ограничения владения, жизненного цикла и потокобезопасности описаны
-в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- [Architecture](docs/ARCHITECTURE.md)
+- [Benchmark report](docs/BENCHMARKS.md)
+- [External workload validation](docs/EXTERNAL_WORKLOADS.md)
+- [Russian documentation](docs/README.ru.md)
+- [English API documentation](docs/README.en.md)
+- [简体中文文档](docs/README.zh-CN.md)
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

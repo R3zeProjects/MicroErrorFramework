@@ -12,8 +12,17 @@ option(ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer" OFF)
 option(ENABLE_COVERAGE "Enable source coverage instrumentation" OFF)
 option(BUILD_BENCHMARKS "Build microbenchmarks" OFF)
 option(BUILD_FUZZERS "Build Clang LibFuzzer targets" OFF)
+option(BUILD_FUZZ_SMOKE "Build a sanitizer-backed deterministic fuzz smoke test" OFF)
 option(BUILD_EXTERNAL_STRESS_TESTS
     "Build stress tests against pinned third-party repositories"
+    OFF
+)
+set(LOCAL_EXTERNAL_WORKLOAD_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/workloads"
+    CACHE PATH "Local root containing pinned external workload checkouts"
+)
+option(BUILD_LOCAL_EXTERNAL_INTEGRATIONS
+    "Build integrations against local fmt and cpp-httplib checkouts"
     OFF
 )
 
@@ -95,6 +104,43 @@ if(BUILD_EXTERNAL_STRESS_TESTS)
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
 
+if(BUILD_LOCAL_EXTERNAL_INTEGRATIONS)
+    set(LocalFmtIncludeDir "${LOCAL_EXTERNAL_WORKLOAD_ROOT}/fmt/include")
+    set(LocalHttpLibIncludeDir "${LOCAL_EXTERNAL_WORKLOAD_ROOT}/cpp-httplib")
+    if(NOT EXISTS "${LocalFmtIncludeDir}/fmt/format.h")
+        message(FATAL_ERROR "fmt checkout not found under ${LOCAL_EXTERNAL_WORKLOAD_ROOT}")
+    endif()
+    if(NOT EXISTS "${LocalHttpLibIncludeDir}/httplib.h")
+        message(FATAL_ERROR "cpp-httplib checkout not found under ${LOCAL_EXTERNAL_WORKLOAD_ROOT}")
+    endif()
+
+    add_executable(MicroErrorSystemLocalExternalIntegrationTests
+        tests/vosp_external_local_integration_tests.cpp
+    )
+    target_link_libraries(MicroErrorSystemLocalExternalIntegrationTests
+        PRIVATE MicroErrorSystemHeaders
+    )
+    if(WIN32)
+        target_link_libraries(MicroErrorSystemLocalExternalIntegrationTests
+            PRIVATE ws2_32
+        )
+    endif()
+    if(NOT MSVC)
+        target_compile_options(MicroErrorSystemLocalExternalIntegrationTests
+            PRIVATE -Wno-deprecated-literal-operator
+        )
+    endif()
+    target_include_directories(MicroErrorSystemLocalExternalIntegrationTests
+        PRIVATE
+            "${LocalFmtIncludeDir}"
+            "${LocalHttpLibIncludeDir}"
+    )
+    target_compile_definitions(MicroErrorSystemLocalExternalIntegrationTests
+        PRIVATE FMT_HEADER_ONLY=1
+    )
+    enable_sanitizers(MicroErrorSystemLocalExternalIntegrationTests)
+endif()
+
 if(BUILD_TESTING)
     add_executable(MicroErrorSystemTests tests/vosp_error_tests.cpp)
     target_link_libraries(MicroErrorSystemTests PRIVATE MicroErrorSystemHeaders)
@@ -115,6 +161,13 @@ if(BUILD_TESTING)
         )
         target_link_libraries(MicroErrorSystemNlohmannStressTests
             PRIVATE MicroErrorSystemHeaders nlohmann_json::nlohmann_json
+        )
+    endif()
+
+    if(BUILD_LOCAL_EXTERNAL_INTEGRATIONS)
+        add_test(
+            NAME MicroErrorSystem.LocalExternalIntegrationTests
+            COMMAND MicroErrorSystemLocalExternalIntegrationTests
         )
     endif()
 
@@ -188,6 +241,13 @@ if(BUILD_TESTING)
             PROPERTIES
                 ENVIRONMENT_MODIFICATION "${MicroErrorSystemTestPathModification}"
         )
+        if(BUILD_LOCAL_EXTERNAL_INTEGRATIONS)
+            set_tests_properties(
+                MicroErrorSystem.LocalExternalIntegrationTests
+                PROPERTIES
+                    ENVIRONMENT_MODIFICATION "${MicroErrorSystemTestPathModification}"
+            )
+        endif()
     endif()
 
     if(BUILD_EXTERNAL_STRESS_TESTS)
@@ -223,10 +283,36 @@ if(BUILD_FUZZERS)
     )
 endif()
 
+if(BUILD_FUZZ_SMOKE)
+    add_executable(MicroErrorSystemFuzzSmoke
+        fuzz/vosp_error_fuzzer.cpp
+        tests/vosp_fuzz_smoke.cpp
+    )
+    target_link_libraries(MicroErrorSystemFuzzSmoke PRIVATE MicroErrorSystemHeaders)
+    if(MSVC)
+        message(FATAL_ERROR "BUILD_FUZZ_SMOKE requires Clang or GCC sanitizer flags")
+    endif()
+    target_compile_options(MicroErrorSystemFuzzSmoke PRIVATE
+        -fsanitize=address,undefined
+        -fno-omit-frame-pointer
+    )
+    target_link_options(MicroErrorSystemFuzzSmoke PRIVATE
+        -fsanitize=address,undefined
+    )
+endif()
+
 if(BUILD_BENCHMARKS)
     add_executable(MicroErrorSystemBenchmark benchmarks/vosp_benchmark.cpp)
     target_link_libraries(MicroErrorSystemBenchmark PRIVATE MicroErrorSystemHeaders)
     enable_sanitizers(MicroErrorSystemBenchmark)
+
+    add_executable(MicroErrorSystemComparisonBenchmark
+        benchmarks/vosp_comparison_benchmark.cpp
+    )
+    target_link_libraries(MicroErrorSystemComparisonBenchmark
+        PRIVATE MicroErrorSystemHeaders
+    )
+    enable_sanitizers(MicroErrorSystemComparisonBenchmark)
 
     if(BUILD_EXTERNAL_STRESS_TESTS)
         add_executable(MicroErrorSystemExternalBenchmark
