@@ -54,10 +54,10 @@ All values below are real local Release measurements, not theoretical claims.
 | `nlohmann/json`, parse-only, 20,000 documents | **111,875 documents/s** |
 | `nlohmann/json`, parse + error control, 4 workers | **224,593 documents/s** |
 | `fmt` + `cpp-httplib` integration | **1,000 requests; 500 errors routed** |
-| MicroErrorSystem logger, single-threaded | **3.24233M records/s** |
-| `spdlog` `null_sink`, single-threaded | **15.4083M records/s** |
-| MicroErrorSystem logger, 4 workers | **1.90371M records/s** |
-| `spdlog` `null_sink`, 4 workers | **24.5881M records/s** |
+| MicroErrorSystem logger, single-threaded | **3.73958M records/s** |
+| `spdlog` `null_sink`, single-threaded | **15.3988M records/s** |
+| MicroErrorSystem logger, 4 workers | **2.18441M records/s** |
+| `spdlog` `null_sink`, 4 workers | **24.2072M records/s** |
 
 Verification results:
 
@@ -79,6 +79,11 @@ workload. The result is expected: MicroErrorSystem additionally constructs a
 typed `Error`, `LogEntry`, timestamp, thread id, and executes a user sink
 callback. This is a component comparison, not a claim that one complete
 framework replaces the other.
+
+The logger hot path now has two targeted optimizations: a no-allocation fast
+path for a single sink and an owned-error overload that moves temporary error
+messages into `LogEntry`. The latest run is recorded above; throughput remains
+machine-dependent.
 
 ## Architecture
 

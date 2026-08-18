@@ -86,10 +86,10 @@ The logger component was compared with `spdlog v1.15.3` using its in-memory
 `null_sink`, 100,000 formatted records, and a four-worker workload:
 
 ```text
-micro_single records=100000 elapsed_us=30842 records_per_second=3.24233e+06
-spdlog_single records=100000 elapsed_us=6490 records_per_second=1.54083e+07
-micro_multi records=100000 elapsed_us=52529 records_per_second=1.90371e+06
-spdlog_multi records=100000 elapsed_us=4067 records_per_second=2.45881e+07
+micro_single records=100000 elapsed_us=26741 records_per_second=3.73958e+06
+spdlog_single records=100000 elapsed_us=6494 records_per_second=1.53988e+07
+micro_multi records=100000 elapsed_us=45779 records_per_second=2.18441e+06
+spdlog_multi records=100000 elapsed_us=4131 records_per_second=2.42072e+07
 ```
 
 This is a narrow throughput comparison. `spdlog` uses a null sink, while

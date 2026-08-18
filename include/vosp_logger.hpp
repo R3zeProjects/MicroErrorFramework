@@ -13,6 +13,7 @@
 #include <string_view>
 #include <thread>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace vosp::logger
@@ -135,9 +136,19 @@ namespace vosp::logger
             return write(Level::TRACE, error);
         }
 
+        [[nodiscard]] bool trace(Error&& error)
+        {
+            return write_owned(Level::TRACE, std::move(error));
+        }
+
         [[nodiscard]] bool debug(const Error& error)
         {
             return write(Level::DEBUG, error);
+        }
+
+        [[nodiscard]] bool debug(Error&& error)
+        {
+            return write_owned(Level::DEBUG, std::move(error));
         }
 
         [[nodiscard]] bool info(const Error& error)
@@ -145,9 +156,19 @@ namespace vosp::logger
             return write(Level::INFO, error);
         }
 
+        [[nodiscard]] bool info(Error&& error)
+        {
+            return write_owned(Level::INFO, std::move(error));
+        }
+
         [[nodiscard]] bool warning(const Error& error)
         {
             return write(Level::WARNING, error);
+        }
+
+        [[nodiscard]] bool warning(Error&& error)
+        {
+            return write_owned(Level::WARNING, std::move(error));
         }
 
         [[nodiscard]] bool error(const Error& error_value)
@@ -155,9 +176,28 @@ namespace vosp::logger
             return write(Level::ERROR, error_value);
         }
 
+        [[nodiscard]] bool error(Error&& error_value)
+        {
+            return write_owned(Level::ERROR, std::move(error_value));
+        }
+
         [[nodiscard]] bool critical(const Error& error)
         {
             return write(Level::CRITICAL, error);
+        }
+
+        [[nodiscard]] bool critical(Error&& error)
+        {
+            return write_owned(Level::CRITICAL, std::move(error));
+        }
+
+        /**
+         * @brief Publishes an owned error without forcing a second message copy.
+         * @note The default keeps compatibility for custom ILogger types.
+         */
+        [[nodiscard]] virtual bool write_owned(Level level, Error error)
+        {
+            return write(level, error);
         }
 
         virtual ~ILogger() noexcept = default;
@@ -242,6 +282,18 @@ namespace vosp::logger
          */
         [[nodiscard]] bool write(Level level, const Error& error) override
         {
+            return write_entry(level, error);
+        }
+
+        [[nodiscard]] bool write_owned(Level level, Error error) override
+        {
+            return write_entry(level, std::move(error));
+        }
+
+    private:
+        template<typename ErrorValue>
+        [[nodiscard]] bool write_entry(Level level, ErrorValue&& error)
+        {
             if (!Policy::accepts(level))
             {
                 return true;
@@ -251,10 +303,11 @@ namespace vosp::logger
                 std::chrono::system_clock::now(),
                 std::this_thread::get_id(),
                 level,
-                error
+                std::forward<ErrorValue>(error)
             };
 
             std::vector<std::reference_wrapper<ILogSink>> sinks;
+            ILogSink* single_sink = nullptr;
             {
                 const std::lock_guard lock{mutex_};
 
@@ -263,10 +316,22 @@ namespace vosp::logger
                     return false;
                 }
 
-                sinks = sinks_;
+                if (sinks_.size() == 1)
+                {
+                    single_sink = &sinks_.front().get();
+                }
+                else
+                {
+                    sinks = sinks_;
+                }
             }
 
             const std::lock_guard callback_lock{callback_mutex_};
+            if (single_sink != nullptr)
+            {
+                return single_sink->write(entry);
+            }
+
             bool accepted = true;
             for (auto& sink : sinks)
             {
@@ -276,7 +341,6 @@ namespace vosp::logger
             return accepted;
         }
 
-    private:
         std::mutex mutex_;
         std::recursive_mutex callback_mutex_;
         std::vector<std::reference_wrapper<ILogSink>> sinks_;
