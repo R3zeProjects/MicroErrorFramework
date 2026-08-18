@@ -56,8 +56,9 @@ All values below are real local Release measurements, not theoretical claims.
 | `fmt` + `cpp-httplib` integration | **1,000 requests; 500 errors routed** |
 | MicroErrorSystem logger, single-threaded | **3.73958M records/s** |
 | `spdlog` `null_sink`, single-threaded | **15.3988M records/s** |
-| MicroErrorSystem logger, 4 workers | **2.18441M records/s** |
-| `spdlog` `null_sink`, 4 workers | **24.2072M records/s** |
+| MicroErrorSystem `Logger`, 4 workers (serialized sink safety) | **1.99457M records/s** |
+| MicroErrorSystem `ParallelLogger`, 4 workers (thread-safe sink) | **5.33447M records/s** |
+| `spdlog` `null_sink`, 4 workers | **31.8979M records/s** |
 
 Verification results:
 
@@ -74,16 +75,18 @@ Detailed methodology and baseline comparisons are available in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 The logger comparison uses `spdlog v1.15.3` with its `null_sink` and the same
-100,000 formatted records. `spdlog` is faster in this narrow sink-throughput
-workload. The result is expected: MicroErrorSystem additionally constructs a
-typed `Error`, `LogEntry`, timestamp, thread id, and executes a user sink
-callback. This is a component comparison, not a claim that one complete
-framework replaces the other.
+100,000 formatted records. Values are medians of five launches. `spdlog` is
+faster in this narrow sink-throughput workload. The result is expected:
+MicroErrorSystem additionally constructs a typed `Error`, `LogEntry`,
+timestamp, thread id, and executes a user sink callback. This is a component
+comparison, not a claim that one complete framework replaces the other.
 
 The logger hot path now has two targeted optimizations: a no-allocation fast
 path for a single sink and an owned-error overload that moves temporary error
-messages into `LogEntry`. The latest run is recorded above; throughput remains
-machine-dependent.
+messages into `LogEntry`. For a thread-safe sink, `ParallelLogger` also removes
+the callback serialization used by the safe default `Logger`; on the measured
+four-worker workload this raised median throughput by **2.67x**. Throughput
+remains machine-dependent.
 
 ## Architecture
 
@@ -235,6 +238,30 @@ logger.error(vosp::error::Error{
 Custom sinks implement `ILogSink`. `PolicyLogger` supports compile-time
 filtering, for example `MinimumLevelPolicy<Level::WARNING>`. Sink ownership is
 external and must outlive the logger.
+
+`Logger` serializes callbacks, so it is suitable for ordinary sinks that do not
+provide their own synchronization. Use `ParallelLogger` only when every
+attached sink safely supports concurrent calls to `ILogSink::write`:
+
+```cpp
+#include <atomic>
+
+class AtomicSink final : public vosp::logger::ILogSink
+{
+public:
+    [[nodiscard]] bool write(const vosp::logger::LogEntry&) override
+    {
+        records_.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    }
+
+private:
+    std::atomic_uint32_t records_ = 0;
+};
+
+AtomicSink sink;
+vosp::logger::ParallelLogger logger{sink};
+```
 
 ## Build profiles
 

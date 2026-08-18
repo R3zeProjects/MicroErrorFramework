@@ -54,6 +54,28 @@ namespace vosp::logger
         { Policy::accepts(level) } noexcept -> std::same_as<bool>;
     };
 
+    /** @brief Dispatches sink callbacks one at a time for generic sink safety. */
+    struct SerializedSinkDispatch
+    {
+        static constexpr bool serializes_callbacks = true;
+    };
+
+    /**
+     * @brief Dispatches sink callbacks concurrently.
+     * @warning Every attached sink must support concurrent calls to ILogSink::write.
+     */
+    struct ParallelSinkDispatch
+    {
+        static constexpr bool serializes_callbacks = false;
+    };
+
+    /** @brief Restricts a type to a compile-time sink dispatch policy. */
+    template<typename Dispatch>
+    concept LoggerDispatchPolicy = requires
+    {
+        typename std::bool_constant<Dispatch::serializes_callbacks>;
+    };
+
     /** @brief Converts a log level to a stable textual representation. */
     [[nodiscard]] constexpr std::string_view to_string(Level level) noexcept
     {
@@ -206,7 +228,8 @@ namespace vosp::logger
     /**
      * @brief Thread-safe logger that broadcasts records to non-owning sinks.
      */
-    template<LoggerPolicy Policy = AcceptAllPolicy>
+    template<LoggerPolicy Policy = AcceptAllPolicy,
+             LoggerDispatchPolicy Dispatch = SerializedSinkDispatch>
     class PolicyLogger final : public ILogger
     {
     public:
@@ -326,7 +349,20 @@ namespace vosp::logger
                 }
             }
 
-            const std::lock_guard callback_lock{callback_mutex_};
+            if constexpr (Dispatch::serializes_callbacks)
+            {
+                const std::lock_guard callback_lock{callback_mutex_};
+                return deliver(entry, single_sink, sinks);
+            }
+
+            return deliver(entry, single_sink, sinks);
+        }
+
+        [[nodiscard]] static bool deliver(
+            const LogEntry& entry,
+            ILogSink* single_sink,
+            std::vector<std::reference_wrapper<ILogSink>>& sinks)
+        {
             if (single_sink != nullptr)
             {
                 return single_sink->write(entry);
@@ -348,6 +384,12 @@ namespace vosp::logger
 
     /** @brief Backward-compatible logger with no level filtering. */
     using Logger = PolicyLogger<AcceptAllPolicy>;
+
+    /**
+     * @brief High-throughput logger for sinks with thread-safe write implementations.
+     * @note Unlike Logger, concurrent calls may enter an attached sink simultaneously.
+     */
+    using ParallelLogger = PolicyLogger<AcceptAllPolicy, ParallelSinkDispatch>;
 
     /**
      * @brief Thread-safe text sink writing one record per line.

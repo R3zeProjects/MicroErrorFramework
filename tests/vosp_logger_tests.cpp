@@ -1,5 +1,6 @@
 #include <vosp.hpp>
 
+#include <atomic>
 #include <iostream>
 #include <sstream>
 #include <thread>
@@ -32,6 +33,25 @@ namespace
         }
 
         std::vector<LogEntry> entries;
+    };
+
+    /** @brief Thread-safe sink used to verify parallel dispatch. */
+    class ConcurrentTestSink final : public ILogSink
+    {
+    public:
+        [[nodiscard]] bool write(const LogEntry&) override
+        {
+            writes_.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+
+        [[nodiscard]] std::uint32_t writes() const noexcept
+        {
+            return writes_.load(std::memory_order_relaxed);
+        }
+
+    private:
+        std::atomic<std::uint32_t> writes_ = 0;
     };
 
     /** @brief Sink that mutates logger membership while handling a record. */
@@ -142,6 +162,40 @@ namespace
 
         return check(sink.entries.size() == 16, "concurrent logging count");
     }
+
+    /** @brief Verifies opt-in parallel dispatch with a thread-safe sink. */
+    bool test_parallel_logging()
+    {
+        constexpr std::uint32_t worker_count = 4;
+        constexpr std::uint32_t records_per_worker = 64;
+        ConcurrentTestSink sink;
+        ParallelLogger logger{sink};
+        std::vector<std::thread> workers;
+        workers.reserve(worker_count);
+
+        for (std::uint32_t worker = 0; worker < worker_count; ++worker)
+        {
+            workers.emplace_back([&logger, worker]
+            {
+                for (std::uint32_t record = 0; record < records_per_worker; ++record)
+                {
+                    (void)logger.info(Error{
+                        Category::NETWORK,
+                        worker * records_per_worker + record,
+                        "parallel"});
+                }
+            });
+        }
+
+        for (auto& worker : workers)
+        {
+            worker.join();
+        }
+
+        return check(
+            sink.writes() == worker_count * records_per_worker,
+            "parallel logging count");
+    }
 }
 
 int main()
@@ -151,5 +205,6 @@ int main()
            test_console_sink() &&
            test_logger_policy() &&
            test_reentrant_sink() &&
-           test_concurrent_logging() ? 0 : 1;
+           test_concurrent_logging() &&
+           test_parallel_logging() ? 0 : 1;
 }

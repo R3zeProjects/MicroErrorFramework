@@ -62,6 +62,30 @@ namespace
         const double seconds = static_cast<double>(elapsed_us) / 1'000'000.0;
         return seconds > 0.0 ? static_cast<double>(records) / seconds : 0.0;
     }
+
+    template<typename LoggerType>
+    [[nodiscard]] std::uint64_t measure_multi(LoggerType& logger)
+    {
+        return measure([&]
+        {
+            std::array<std::jthread, worker_count> workers;
+            for (std::size_t worker = 0; worker < worker_count; ++worker)
+            {
+                workers[worker] = std::jthread{[&, worker]
+                {
+                    const std::uint32_t per_worker = operation_count /
+                        static_cast<std::uint32_t>(worker_count);
+                    for (std::uint32_t code = 0; code < per_worker; ++code)
+                    {
+                        static_cast<void>(logger.info(Error{
+                            Category::NETWORK,
+                            static_cast<std::uint32_t>(worker * per_worker) + code,
+                            "connection refused"}));
+                    }
+                }};
+            }
+        });
+    }
 }
 
 int main()
@@ -90,25 +114,11 @@ int main()
 
     FormattingSink micro_multi_sink;
     Logger micro_multi_logger{micro_multi_sink};
-    const auto micro_multi_us = measure([&]
-    {
-        std::array<std::jthread, worker_count> workers;
-        for (std::size_t worker = 0; worker < worker_count; ++worker)
-        {
-            workers[worker] = std::jthread{[&, worker]
-            {
-                const std::uint32_t per_worker = operation_count /
-                    static_cast<std::uint32_t>(worker_count);
-                for (std::uint32_t code = 0; code < per_worker; ++code)
-                {
-                    static_cast<void>(micro_multi_logger.info(Error{
-                        Category::NETWORK,
-                        static_cast<std::uint32_t>(worker * per_worker) + code,
-                        "connection refused"}));
-                }
-            }};
-        }
-    });
+    const auto micro_multi_us = measure_multi(micro_multi_logger);
+
+    FormattingSink micro_parallel_multi_sink;
+    ParallelLogger micro_parallel_multi_logger{micro_parallel_multi_sink};
+    const auto micro_parallel_multi_us = measure_multi(micro_parallel_multi_logger);
 
     const auto spd_multi_us = measure([&]
     {
@@ -138,6 +148,10 @@ int main()
               << "micro_multi records=" << micro_multi_sink.records()
               << " elapsed_us=" << micro_multi_us
               << " records_per_second=" << throughput(micro_multi_sink.records(), micro_multi_us) << '\n'
+              << "micro_parallel_multi records=" << micro_parallel_multi_sink.records()
+              << " elapsed_us=" << micro_parallel_multi_us
+              << " records_per_second=" << throughput(
+                     micro_parallel_multi_sink.records(), micro_parallel_multi_us) << '\n'
               << "spdlog_multi records=" << operation_count
               << " elapsed_us=" << spd_multi_us
               << " records_per_second=" << throughput(operation_count, spd_multi_us) << '\n';

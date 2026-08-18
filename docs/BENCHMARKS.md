@@ -83,20 +83,24 @@ reference, not an apples-to-apples replacement for the framework API.
 ## Logger comparison with spdlog
 
 The logger component was compared with `spdlog v1.15.3` using its in-memory
-`null_sink`, 100,000 formatted records, and a four-worker workload:
+`null_sink`, 100,000 formatted records, and a four-worker workload. The values
+below are medians from five release launches on the documented Windows host:
 
 ```text
-micro_single records=100000 elapsed_us=26741 records_per_second=3.73958e+06
-spdlog_single records=100000 elapsed_us=6494 records_per_second=1.53988e+07
-micro_multi records=100000 elapsed_us=45779 records_per_second=2.18441e+06
-spdlog_multi records=100000 elapsed_us=4131 records_per_second=2.42072e+07
+micro_single records=100000 elapsed_us=27058 records_per_second=3.69576e+06
+spdlog_single records=100000 elapsed_us=6507 records_per_second=1.53681e+07
+micro_multi records=100000 elapsed_us=50136 records_per_second=1.99457e+06
+micro_parallel_multi records=100000 elapsed_us=18746 records_per_second=5.33447e+06
+spdlog_multi records=100000 elapsed_us=3135 records_per_second=3.18979e+07
 ```
 
 This is a narrow throughput comparison. `spdlog` uses a null sink, while
 MicroErrorSystem creates typed error/log-entry objects and invokes its sink
-callback contract. The result identifies an optimization opportunity in the
-logger hot path; it does not invalidate the framework's error registration,
-routing, policy, or lifecycle features.
+callback contract. `Logger` serializes callbacks for generic sink safety;
+`ParallelLogger` is an explicit opt-in mode for sinks whose `write` methods are
+thread-safe, and lifts this workload by 2.67x over the serialized default. The
+result does not invalidate the framework's error registration, routing, policy,
+or lifecycle features.
 
 ## Fuzzing
 
