@@ -125,7 +125,8 @@ namespace
                         static_cast<std::uint32_t>(worker_count);
                     for (std::uint32_t code = 0; code < per_worker; ++code)
                     {
-                        static_cast<void>(logger.info(
+                        static_cast<void>(logger.log(
+                            Level::INFO,
                             Category::NETWORK,
                             static_cast<std::uint32_t>(worker * per_worker) + code,
                             "connection refused"));
@@ -174,8 +175,8 @@ int main()
     {
         for (std::uint32_t code = 0; code < operation_count; ++code)
         {
-            static_cast<void>(fast_logger.info(
-                Category::NETWORK, code, "connection refused"));
+            static_cast<void>(fast_logger.log(
+                Level::INFO, Category::NETWORK, code, "connection refused"));
         }
     });
     const auto fast_single_records = fast_sink.records();

@@ -293,7 +293,11 @@ public:
 
 MetricsSink sink;
 vosp::logger::FastLogger logger{sink};
-logger.info(vosp::error::Category::NETWORK, 1001, "Connection refused");
+logger.log(
+    vosp::logger::Level::INFO,
+    vosp::error::Category::NETWORK,
+    1001,
+    "Connection refused");
 ```
 
 ## Build profiles

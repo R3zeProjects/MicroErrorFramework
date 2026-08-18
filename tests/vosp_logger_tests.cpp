@@ -260,7 +260,9 @@ namespace
         FastTestSink sink;
         FastLogger logger{sink};
 
-        return check(logger.info(Category::DATABASE, 5001, "direct"), "fast logger write") &&
+        return check(
+                   logger.log(Level::INFO, Category::DATABASE, 5001, "direct"),
+                   "fast logger write") &&
                check(sink.writes() == 1, "fast logger count") &&
                check(sink.last_code() == 5001, "fast logger entry");
     }

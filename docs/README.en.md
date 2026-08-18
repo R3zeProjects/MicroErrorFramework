@@ -261,7 +261,8 @@ filtering is available with `PolicyLogger<MinimumLevelPolicy<Level::WARNING>>`.
 For a fixed, thread-safe sink on a high-throughput path, use
 `FastLogger<Sink>`. It dispatches directly to the concrete sink and borrows the
 `std::string_view` message only for the duration of `write()`. It does not
-provide dynamic sink registration, ownership, timestamps, or thread ids.
+provide dynamic sink registration, ownership, timestamps, or thread ids. Its
+minimal API is `log(Level, Category, code, message)`.
 
 ## Predefined errors
 

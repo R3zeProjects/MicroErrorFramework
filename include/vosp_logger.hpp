@@ -474,8 +474,11 @@ namespace vosp::logger
         {
         }
 
-        /** @brief Publishes a borrowed error description without allocating an Error. */
-        [[nodiscard]] bool write(
+        /**
+         * @brief Publishes a borrowed record without allocating an Error.
+         * @warning The sink must not retain message after this call returns.
+         */
+        [[nodiscard]] bool log(
             Level level,
             Category category,
             std::uint32_t code,
@@ -487,42 +490,6 @@ namespace vosp::logger
             }
 
             return sink_.write(FastLogEntry{level, category, code, message});
-        }
-
-        /** @brief Publishes an existing Error without copying its message. */
-        [[nodiscard]] bool write(Level level, const Error& error)
-        {
-            return write(level, error.category(), error.code(), error.message());
-        }
-
-        [[nodiscard]] bool trace(Category category, std::uint32_t code, std::string_view message)
-        {
-            return write(Level::TRACE, category, code, message);
-        }
-
-        [[nodiscard]] bool debug(Category category, std::uint32_t code, std::string_view message)
-        {
-            return write(Level::DEBUG, category, code, message);
-        }
-
-        [[nodiscard]] bool info(Category category, std::uint32_t code, std::string_view message)
-        {
-            return write(Level::INFO, category, code, message);
-        }
-
-        [[nodiscard]] bool warning(Category category, std::uint32_t code, std::string_view message)
-        {
-            return write(Level::WARNING, category, code, message);
-        }
-
-        [[nodiscard]] bool error(Category category, std::uint32_t code, std::string_view message)
-        {
-            return write(Level::ERROR, category, code, message);
-        }
-
-        [[nodiscard]] bool critical(Category category, std::uint32_t code, std::string_view message)
-        {
-            return write(Level::CRITICAL, category, code, message);
         }
 
     private:
