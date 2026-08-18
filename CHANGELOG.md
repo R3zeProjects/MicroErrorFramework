@@ -22,6 +22,14 @@ the version policy described in `docs/API_CONTRACTS.md`.
 - Windows deterministic sanitizer fuzz documentation now uses RelWithDebInfo to
   avoid mixing dynamic Clang ASan with the Microsoft Debug CRT.
 
+### Fixed
+
+- Linux Clang CI now uses libc++, whose C++23 mode provides `std::expected`;
+  configuration fails early with an actionable diagnostic for unsupported
+  standard-library combinations.
+- Helgrind now exercises logger concurrency without libstdc++ `std::future`
+  false positives; ThreadSanitizer remains the authoritative full race gate.
+
 ## [0.1.0-beta] - 2026-08-18
 
 ### Added

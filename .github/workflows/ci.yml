@@ -22,12 +22,19 @@ jobs:
         include:
           - name: GCC
             compiler: g++
+            cxxflags: ''
           - name: Clang
             compiler: clang++
+            cxxflags: -stdlib=libc++
+    env:
+      CXXFLAGS: ${{ matrix.cxxflags }}
+      LDFLAGS: ${{ matrix.cxxflags }}
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          ninja-build clang libc++-dev libc++abi-dev
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -75,10 +82,15 @@ jobs:
     name: Linux Clang ASan and UBSan
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      CXXFLAGS: -stdlib=libc++
+      LDFLAGS: -stdlib=libc++
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang ninja-build
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          clang ninja-build libc++-dev libc++abi-dev
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -96,10 +108,15 @@ jobs:
     name: Linux Clang ThreadSanitizer
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      CXXFLAGS: -stdlib=libc++
+      LDFLAGS: -stdlib=libc++
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang ninja-build
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          clang ninja-build libc++-dev libc++abi-dev
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -119,10 +136,15 @@ jobs:
     name: Linux Clang LibFuzzer
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      CXXFLAGS: -stdlib=libc++
+      LDFLAGS: -stdlib=libc++
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang ninja-build
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          clang ninja-build libc++-dev libc++abi-dev
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -156,17 +178,23 @@ jobs:
           ./build/MicroErrorSystemConcurrencyContractTests
       - name: Helgrind
         run: >-
-          valgrind --tool=helgrind --fair-sched=yes --error-exitcode=1
-          ./build/MicroErrorSystemConcurrencyContractTests
+          valgrind --tool=helgrind --fair-sched=yes
+          --check-cond-signal-mutex=no --error-exitcode=1
+          ./build/MicroErrorSystemLoggerTests
 
   static-analysis:
     name: Linux clang-tidy
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      CXXFLAGS: -stdlib=libc++
+      LDFLAGS: -stdlib=libc++
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-tidy
-        run: sudo apt-get update && sudo apt-get install -y clang clang-tidy ninja-build
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          clang clang-tidy ninja-build libc++-dev libc++abi-dev
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build

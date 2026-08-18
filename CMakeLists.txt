@@ -38,6 +38,19 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles(
+    "#include <expected>
+     int main() { std::expected<void, int> value; return value ? 0 : 1; }"
+    VOSP_HAS_STD_EXPECTED
+)
+if(NOT VOSP_HAS_STD_EXPECTED)
+    message(FATAL_ERROR
+        "The selected C++23 standard library does not provide std::expected. "
+        "Use GCC with a recent libstdc++, MSVC, or Clang with -stdlib=libc++."
+    )
+endif()
+
 add_library(MicroErrorSystemHeaders INTERFACE)
 add_library(vosp::vosp ALIAS MicroErrorSystemHeaders)
 set_target_properties(MicroErrorSystemHeaders PROPERTIES EXPORT_NAME vosp)
