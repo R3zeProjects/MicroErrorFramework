@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -196,6 +197,36 @@ namespace
             sink.writes() == worker_count * records_per_worker,
             "parallel logging count");
     }
+
+    /** @brief Verifies that a logger can retain an owned sink safely. */
+    bool test_owned_sink_lifetime()
+    {
+        Logger logger;
+        auto sink = std::make_shared<ConcurrentTestSink>();
+        const std::weak_ptr<ConcurrentTestSink> weak_sink = sink;
+
+        if (!check(logger.attach(sink), "attach owned sink"))
+        {
+            return false;
+        }
+
+        sink.reset();
+        auto retained_sink = weak_sink.lock();
+        if (!check(static_cast<bool>(retained_sink), "logger retains sink"))
+        {
+            return false;
+        }
+
+        if (!check(logger.info(Error{Category::NETWORK, 4001, "owned"}), "owned sink write") ||
+            !check(retained_sink->writes() == 1, "owned sink receives entry") ||
+            !check(logger.detach(*retained_sink), "detach owned sink"))
+        {
+            return false;
+        }
+
+        retained_sink.reset();
+        return check(weak_sink.expired(), "owned sink is released after detach");
+    }
 }
 
 int main()
@@ -206,5 +237,6 @@ int main()
            test_logger_policy() &&
            test_reentrant_sink() &&
            test_concurrent_logging() &&
-           test_parallel_logging() ? 0 : 1;
+           test_parallel_logging() &&
+           test_owned_sink_lifetime() ? 0 : 1;
 }

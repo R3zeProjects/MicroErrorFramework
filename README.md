@@ -125,10 +125,11 @@ do not add per-object configuration storage. They should describe behavior,
 not own resources; ownership remains explicit in registers, sinks, executors,
 and worker pools.
 
-Registers and logger sinks are non-owning dependencies. They must outlive the
-objects that use them. The built-in asynchronous system keeps its handler state
-alive for submitted operations so destroying the system does not invalidate
-pending futures.
+Registers are non-owning dependencies and must outlive the objects that use
+them. Logger sinks may be non-owning references or logger-owned
+`std::shared_ptr` dependencies. The built-in asynchronous system keeps its
+handler state alive for submitted operations so destroying the system does not
+invalidate pending futures.
 
 ## Requirements
 
@@ -236,8 +237,17 @@ logger.error(vosp::error::Error{
 ```
 
 Custom sinks implement `ILogSink`. `PolicyLogger` supports compile-time
-filtering, for example `MinimumLevelPolicy<Level::WARNING>`. Sink ownership is
-external and must outlive the logger.
+filtering, for example `MinimumLevelPolicy<Level::WARNING>`. A reference-based
+sink has external ownership and must outlive the logger. To make the logger
+retain a sink safely, attach a `std::shared_ptr` instead:
+
+```cpp
+#include <memory>
+
+auto sink = std::make_shared<MySink>();
+vosp::logger::Logger logger{sink};
+sink.reset(); // Logger keeps the sink alive.
+```
 
 `Logger` serializes callbacks, so it is suitable for ordinary sinks that do not
 provide their own synchronization. Use `ParallelLogger` only when every

@@ -251,11 +251,12 @@ Output:
 [ERROR] [NETWORK] code=1001 message=Connection refused
 ```
 
-Implement a custom sink by overriding `ILogSink::write()`. The logger does not
-own sinks and its methods can be called from multiple threads. Sink callbacks
-run outside the logger mutex, so reentrant `attach/detach` is supported; the
-sink must still outlive the logger. Compile-time filtering is available with
-`PolicyLogger<MinimumLevelPolicy<Level::WARNING>>`.
+Implement a custom sink by overriding `ILogSink::write()`. A reference-based
+sink must outlive the logger. To transfer safe lifetime management to the
+logger, pass `std::shared_ptr<ILogSink>` to its constructor or `attach()`;
+ownership ends at `detach()` or logger destruction. Sink callbacks run outside
+the logger mutex, so reentrant `attach/detach` is supported. Compile-time
+filtering is available with `PolicyLogger<MinimumLevelPolicy<Level::WARNING>>`.
 
 ## Predefined errors
 

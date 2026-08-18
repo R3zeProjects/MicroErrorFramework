@@ -9,6 +9,7 @@
 #include <functional>
 #include <iomanip>
 #include <mutex>
+#include <memory>
 #include <ostream>
 #include <string_view>
 #include <thread>
@@ -226,12 +227,19 @@ namespace vosp::logger
     };
 
     /**
-     * @brief Thread-safe logger that broadcasts records to non-owning sinks.
+     * @brief Thread-safe logger that broadcasts records to external or owned sinks.
      */
     template<LoggerPolicy Policy = AcceptAllPolicy,
              LoggerDispatchPolicy Dispatch = SerializedSinkDispatch>
     class PolicyLogger final : public ILogger
     {
+    private:
+        struct SinkSlot
+        {
+            ILogSink* sink;
+            std::shared_ptr<ILogSink> owner;
+        };
+
     public:
         PolicyLogger() = default;
 
@@ -246,6 +254,16 @@ namespace vosp::logger
         }
 
         /**
+         * @brief Creates a logger that owns its initial sink.
+         * @param sink Shared sink lifetime retained by this logger.
+         */
+        template<SinkType Sink>
+        explicit PolicyLogger(std::shared_ptr<Sink> sink)
+        {
+            static_cast<void>(attach(std::move(sink)));
+        }
+
+        /**
          * @brief Adds a sink to the broadcast list.
          * @param sink Sink that must outlive this logger.
          * @return false when the sink is already registered.
@@ -256,13 +274,39 @@ namespace vosp::logger
 
             for (const auto& registered_sink : sinks_)
             {
-                if (&registered_sink.get() == &sink)
+                if (registered_sink.sink == &sink)
                 {
                     return false;
                 }
             }
 
-            sinks_.emplace_back(sink);
+            sinks_.push_back(SinkSlot{&sink, {}});
+            return true;
+        }
+
+        /**
+         * @brief Adds a sink and retains shared ownership of it.
+         * @param sink Non-null sink whose lifetime is managed by shared ownership.
+         * @return false when the pointer is null or the sink is already registered.
+         */
+        [[nodiscard]] bool attach(std::shared_ptr<ILogSink> sink)
+        {
+            if (!sink)
+            {
+                return false;
+            }
+
+            const std::lock_guard lock{mutex_};
+            auto* const raw_sink = sink.get();
+            for (const auto& registered_sink : sinks_)
+            {
+                if (registered_sink.sink == raw_sink)
+                {
+                    return false;
+                }
+            }
+
+            sinks_.push_back(SinkSlot{raw_sink, std::move(sink)});
             return true;
         }
 
@@ -280,7 +324,7 @@ namespace vosp::logger
                 sinks_.end(),
                 [&sink](const auto& registered_sink)
                 {
-                    return &registered_sink.get() == &sink;
+                    return registered_sink.sink == &sink;
                 });
 
             if (it == sinks_.end())
@@ -329,8 +373,9 @@ namespace vosp::logger
                 std::forward<ErrorValue>(error)
             };
 
-            std::vector<std::reference_wrapper<ILogSink>> sinks;
+            std::vector<SinkSlot> sinks;
             ILogSink* single_sink = nullptr;
+            [[maybe_unused]] std::shared_ptr<ILogSink> single_sink_owner;
             {
                 const std::lock_guard lock{mutex_};
 
@@ -341,7 +386,8 @@ namespace vosp::logger
 
                 if (sinks_.size() == 1)
                 {
-                    single_sink = &sinks_.front().get();
+                    single_sink = sinks_.front().sink;
+                    single_sink_owner = sinks_.front().owner;
                 }
                 else
                 {
@@ -361,7 +407,7 @@ namespace vosp::logger
         [[nodiscard]] static bool deliver(
             const LogEntry& entry,
             ILogSink* single_sink,
-            std::vector<std::reference_wrapper<ILogSink>>& sinks)
+            std::vector<SinkSlot>& sinks)
         {
             if (single_sink != nullptr)
             {
@@ -369,9 +415,9 @@ namespace vosp::logger
             }
 
             bool accepted = true;
-            for (auto& sink : sinks)
+            for (const auto& sink : sinks)
             {
-                accepted = sink.get().write(entry) && accepted;
+                accepted = sink.sink->write(entry) && accepted;
             }
 
             return accepted;
@@ -379,7 +425,7 @@ namespace vosp::logger
 
         std::mutex mutex_;
         std::recursive_mutex callback_mutex_;
-        std::vector<std::reference_wrapper<ILogSink>> sinks_;
+        std::vector<SinkSlot> sinks_;
     };
 
     /** @brief Backward-compatible logger with no level filtering. */
