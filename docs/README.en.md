@@ -258,6 +258,11 @@ ownership ends at `detach()` or logger destruction. Sink callbacks run outside
 the logger mutex, so reentrant `attach/detach` is supported. Compile-time
 filtering is available with `PolicyLogger<MinimumLevelPolicy<Level::WARNING>>`.
 
+For a fixed, thread-safe sink on a high-throughput path, use
+`FastLogger<Sink>`. It dispatches directly to the concrete sink and borrows the
+`std::string_view` message only for the duration of `write()`. It does not
+provide dynamic sink registration, ownership, timestamps, or thread ids.
+
 ## Predefined errors
 
 The module provides ready-to-use values:

@@ -54,11 +54,12 @@ All values below are real local Release measurements, not theoretical claims.
 | `nlohmann/json`, parse-only, 20,000 documents | **111,875 documents/s** |
 | `nlohmann/json`, parse + error control, 4 workers | **224,593 documents/s** |
 | `fmt` + `cpp-httplib` integration | **1,000 requests; 500 errors routed** |
-| MicroErrorSystem logger, single-threaded | **3.73958M records/s** |
-| `spdlog` `null_sink`, single-threaded | **15.3988M records/s** |
-| MicroErrorSystem `Logger`, 4 workers (serialized sink safety) | **1.99457M records/s** |
-| MicroErrorSystem `ParallelLogger`, 4 workers (thread-safe sink) | **5.33447M records/s** |
-| `spdlog` `null_sink`, 4 workers | **31.8979M records/s** |
+| MicroErrorSystem logger, single-threaded | **3.89742M records/s** |
+| `spdlog` `null_sink`, single-threaded | **15.3894M records/s** |
+| MicroErrorSystem `Logger`, 4 workers (serialized sink safety) | **2.01641M records/s** |
+| MicroErrorSystem `ParallelLogger`, 4 workers (thread-safe sink) | **4.52264M records/s** |
+| MicroErrorSystem `FastLogger`, 4 workers (fixed thread-safe sink) | **11.542M records/s** |
+| `spdlog` `null_sink`, 4 workers | **32.7011M records/s** |
 
 Verification results:
 
@@ -85,8 +86,14 @@ The logger hot path now has two targeted optimizations: a no-allocation fast
 path for a single sink and an owned-error overload that moves temporary error
 messages into `LogEntry`. For a thread-safe sink, `ParallelLogger` also removes
 the callback serialization used by the safe default `Logger`; on the measured
-four-worker workload this raised median throughput by **2.67x**. Throughput
+four-worker workload this raised median throughput by **2.24x**. Throughput
 remains machine-dependent.
+
+For a fixed high-throughput sink, `FastLogger<Sink>` removes dynamic sink
+registration, virtual dispatch, timestamp/thread-id capture, and `Error`
+message allocation. Its five-run median was **11.542M records/s** with four
+workers. It is a synchronous direct path: the sink is externally owned,
+thread-safe, and must not retain `FastLogEntry::message` beyond `write()`.
 
 ## Architecture
 
@@ -271,6 +278,22 @@ private:
 
 AtomicSink sink;
 vosp::logger::ParallelLogger logger{sink};
+```
+
+For the lowest overhead with a fixed sink type, use `FastLogger`. It accepts a
+borrowed `std::string_view` message, so no `Error` is allocated on the logging
+path:
+
+```cpp
+class MetricsSink
+{
+public:
+    [[nodiscard]] bool write(const vosp::logger::FastLogEntry& entry);
+};
+
+MetricsSink sink;
+vosp::logger::FastLogger logger{sink};
+logger.info(vosp::error::Category::NETWORK, 1001, "Connection refused");
 ```
 
 ## Build profiles

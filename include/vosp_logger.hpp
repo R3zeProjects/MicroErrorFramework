@@ -119,6 +119,18 @@ namespace vosp::logger
     };
 
     /**
+     * @brief Non-owning log record for the direct high-throughput logging path.
+     * @warning message is valid only for the duration of the sink write callback.
+     */
+    struct FastLogEntry
+    {
+        Level level;
+        Category category;
+        std::uint32_t code;
+        std::string_view message;
+    };
+
+    /**
      * @brief Destination for formatted or structured log records.
      * @note A sink attached by reference must outlive the Logger that references it.
      */
@@ -138,6 +150,13 @@ namespace vosp::logger
     /** @brief Restricts a type to concrete log sink implementations. */
     template<typename Sink>
     concept SinkType = std::derived_from<std::remove_cvref_t<Sink>, ILogSink>;
+
+    /** @brief Restricts a type to a direct sink for FastLogger. */
+    template<typename Sink>
+    concept FastSink = requires(Sink& sink, const FastLogEntry& entry)
+    {
+        { sink.write(entry) } -> std::same_as<bool>;
+    };
 
     /**
      * @brief Abstract logging service.
@@ -436,6 +455,79 @@ namespace vosp::logger
      * @note Unlike Logger, concurrent calls may enter an attached sink simultaneously.
      */
     using ParallelLogger = PolicyLogger<AcceptAllPolicy, ParallelSinkDispatch>;
+
+    /**
+     * @brief Direct logger optimized for a fixed, thread-safe sink type.
+     * @tparam Sink Concrete sink type accepting FastLogEntry.
+     * @tparam Policy Compile-time log-level filter.
+     * @warning The sink must outlive this logger and be thread-safe when used concurrently.
+     * @note This synchronous path does not capture a timestamp or thread id and never owns
+     *       the message. Use Logger or ParallelLogger when dynamic sinks or full metadata
+     *       are required.
+     */
+    template<FastSink Sink, LoggerPolicy Policy = AcceptAllPolicy>
+    class FastLogger final
+    {
+    public:
+        explicit FastLogger(Sink& sink) noexcept
+            : sink_(sink)
+        {
+        }
+
+        /** @brief Publishes a borrowed error description without allocating an Error. */
+        [[nodiscard]] bool write(
+            Level level,
+            Category category,
+            std::uint32_t code,
+            std::string_view message)
+        {
+            if (!Policy::accepts(level))
+            {
+                return true;
+            }
+
+            return sink_.write(FastLogEntry{level, category, code, message});
+        }
+
+        /** @brief Publishes an existing Error without copying its message. */
+        [[nodiscard]] bool write(Level level, const Error& error)
+        {
+            return write(level, error.category(), error.code(), error.message());
+        }
+
+        [[nodiscard]] bool trace(Category category, std::uint32_t code, std::string_view message)
+        {
+            return write(Level::TRACE, category, code, message);
+        }
+
+        [[nodiscard]] bool debug(Category category, std::uint32_t code, std::string_view message)
+        {
+            return write(Level::DEBUG, category, code, message);
+        }
+
+        [[nodiscard]] bool info(Category category, std::uint32_t code, std::string_view message)
+        {
+            return write(Level::INFO, category, code, message);
+        }
+
+        [[nodiscard]] bool warning(Category category, std::uint32_t code, std::string_view message)
+        {
+            return write(Level::WARNING, category, code, message);
+        }
+
+        [[nodiscard]] bool error(Category category, std::uint32_t code, std::string_view message)
+        {
+            return write(Level::ERROR, category, code, message);
+        }
+
+        [[nodiscard]] bool critical(Category category, std::uint32_t code, std::string_view message)
+        {
+            return write(Level::CRITICAL, category, code, message);
+        }
+
+    private:
+        Sink& sink_;
+    };
 
     /**
      * @brief Thread-safe text sink writing one record per line.

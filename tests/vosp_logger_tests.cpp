@@ -55,6 +55,32 @@ namespace
         std::atomic<std::uint32_t> writes_ = 0;
     };
 
+    /** @brief Direct thread-safe sink used to verify FastLogger. */
+    class FastTestSink final
+    {
+    public:
+        [[nodiscard]] bool write(const FastLogEntry& entry)
+        {
+            last_code_.store(entry.code, std::memory_order_relaxed);
+            writes_.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+
+        [[nodiscard]] std::uint32_t writes() const noexcept
+        {
+            return writes_.load(std::memory_order_relaxed);
+        }
+
+        [[nodiscard]] std::uint32_t last_code() const noexcept
+        {
+            return last_code_.load(std::memory_order_relaxed);
+        }
+
+    private:
+        std::atomic<std::uint32_t> writes_ = 0;
+        std::atomic<std::uint32_t> last_code_ = 0;
+    };
+
     /** @brief Sink that mutates logger membership while handling a record. */
     class ReentrantSink final : public ILogSink
     {
@@ -227,6 +253,17 @@ namespace
         retained_sink.reset();
         return check(weak_sink.expired(), "owned sink is released after detach");
     }
+
+    /** @brief Verifies direct logging without Error allocation or dynamic dispatch. */
+    bool test_fast_logger()
+    {
+        FastTestSink sink;
+        FastLogger logger{sink};
+
+        return check(logger.info(Category::DATABASE, 5001, "direct"), "fast logger write") &&
+               check(sink.writes() == 1, "fast logger count") &&
+               check(sink.last_code() == 5001, "fast logger entry");
+    }
 }
 
 int main()
@@ -238,5 +275,6 @@ int main()
            test_reentrant_sink() &&
            test_concurrent_logging() &&
            test_parallel_logging() &&
-           test_owned_sink_lifetime() ? 0 : 1;
+           test_owned_sink_lifetime() &&
+           test_fast_logger() ? 0 : 1;
 }

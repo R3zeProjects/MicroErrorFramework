@@ -46,6 +46,30 @@ namespace
         std::atomic<std::uint32_t> records_ = 0;
     };
 
+    class FastFormattingSink final
+    {
+    public:
+        [[nodiscard]] bool write(const FastLogEntry& entry)
+        {
+            static_cast<void>(fmt::format(
+                "[{}] [{}] code={} message={}",
+                to_string(entry.level),
+                to_string(entry.category),
+                entry.code,
+                entry.message));
+            records_.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+
+        [[nodiscard]] std::uint32_t records() const noexcept
+        {
+            return records_.load(std::memory_order_relaxed);
+        }
+
+    private:
+        std::atomic<std::uint32_t> records_ = 0;
+    };
+
     template<typename Function>
     [[nodiscard]] std::uint64_t measure(Function&& function)
     {
@@ -86,6 +110,30 @@ namespace
             }
         });
     }
+
+    template<typename LoggerType>
+    [[nodiscard]] std::uint64_t measure_fast_multi(LoggerType& logger)
+    {
+        return measure([&]
+        {
+            std::array<std::jthread, worker_count> workers;
+            for (std::size_t worker = 0; worker < worker_count; ++worker)
+            {
+                workers[worker] = std::jthread{[&, worker]
+                {
+                    const std::uint32_t per_worker = operation_count /
+                        static_cast<std::uint32_t>(worker_count);
+                    for (std::uint32_t code = 0; code < per_worker; ++code)
+                    {
+                        static_cast<void>(logger.info(
+                            Category::NETWORK,
+                            static_cast<std::uint32_t>(worker * per_worker) + code,
+                            "connection refused"));
+                    }
+                }};
+            }
+        });
+    }
 }
 
 int main()
@@ -120,6 +168,20 @@ int main()
     ParallelLogger micro_parallel_multi_logger{micro_parallel_multi_sink};
     const auto micro_parallel_multi_us = measure_multi(micro_parallel_multi_logger);
 
+    FastFormattingSink fast_sink;
+    FastLogger fast_logger{fast_sink};
+    const auto fast_single_us = measure([&]
+    {
+        for (std::uint32_t code = 0; code < operation_count; ++code)
+        {
+            static_cast<void>(fast_logger.info(
+                Category::NETWORK, code, "connection refused"));
+        }
+    });
+    const auto fast_single_records = fast_sink.records();
+    const auto fast_multi_us = measure_fast_multi(fast_logger);
+    const auto fast_multi_records = fast_sink.records() - fast_single_records;
+
     const auto spd_multi_us = measure([&]
     {
         std::array<std::jthread, worker_count> workers;
@@ -152,6 +214,12 @@ int main()
               << " elapsed_us=" << micro_parallel_multi_us
               << " records_per_second=" << throughput(
                      micro_parallel_multi_sink.records(), micro_parallel_multi_us) << '\n'
+              << "fast_single records=" << fast_single_records
+              << " elapsed_us=" << fast_single_us
+              << " records_per_second=" << throughput(fast_single_records, fast_single_us) << '\n'
+              << "fast_multi records=" << fast_multi_records
+              << " elapsed_us=" << fast_multi_us
+              << " records_per_second=" << throughput(fast_multi_records, fast_multi_us) << '\n'
               << "spdlog_multi records=" << operation_count
               << " elapsed_us=" << spd_multi_us
               << " records_per_second=" << throughput(operation_count, spd_multi_us) << '\n';

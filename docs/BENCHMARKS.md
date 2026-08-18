@@ -87,20 +87,25 @@ The logger component was compared with `spdlog v1.15.3` using its in-memory
 below are medians from five release launches on the documented Windows host:
 
 ```text
-micro_single records=100000 elapsed_us=27058 records_per_second=3.69576e+06
-spdlog_single records=100000 elapsed_us=6507 records_per_second=1.53681e+07
-micro_multi records=100000 elapsed_us=50136 records_per_second=1.99457e+06
-micro_parallel_multi records=100000 elapsed_us=18746 records_per_second=5.33447e+06
-spdlog_multi records=100000 elapsed_us=3135 records_per_second=3.18979e+07
+micro_single records=100000 elapsed_us=25658 records_per_second=3.89742e+06
+spdlog_single records=100000 elapsed_us=6498 records_per_second=1.53894e+07
+micro_multi records=100000 elapsed_us=49593 records_per_second=2.01641e+06
+micro_parallel_multi records=100000 elapsed_us=22111 records_per_second=4.52264e+06
+fast_single records=100000 elapsed_us=18226 records_per_second=5.48667e+06
+fast_multi records=100000 elapsed_us=8664 records_per_second=1.1542e+07
+spdlog_multi records=100000 elapsed_us=3058 records_per_second=3.27011e+07
 ```
 
 This is a narrow throughput comparison. `spdlog` uses a null sink, while
 MicroErrorSystem creates typed error/log-entry objects and invokes its sink
 callback contract. `Logger` serializes callbacks for generic sink safety;
 `ParallelLogger` is an explicit opt-in mode for sinks whose `write` methods are
-thread-safe, and lifts this workload by 2.67x over the serialized default. The
-result does not invalidate the framework's error registration, routing, policy,
-or lifecycle features.
+thread-safe, and lifts this workload by 2.24x over the serialized default. The
+`FastLogger<Sink>` is a direct, synchronous API for a fixed thread-safe sink;
+it avoids dynamic sink management, virtual dispatch, full metadata capture, and
+`Error` allocation by borrowing the message during `write()`. Its four-worker
+median was 11.542M records/s. The result does not invalidate the framework's
+error registration, routing, policy, or lifecycle features.
 
 ## Fuzzing
 
