@@ -42,6 +42,33 @@ control layer in larger C++ systems.
   ThreadSanitizer, LibFuzzer, Valgrind, coverage, and Callgrind workflows;
 - external integration workloads using pinned third-party repositories.
 
+## Measured results
+
+All values below are real local Release measurements, not theoretical claims.
+
+| Workload | Result |
+| --- | ---: |
+| Single-threaded register inserts | **3.6324M operations/s** |
+| Multi-threaded system, 3 workers | **4.53325M operations/s** |
+| Async system, 1,000 operations | **244,678 operations/s** |
+| `nlohmann/json`, parse-only, 20,000 documents | **111,875 documents/s** |
+| `nlohmann/json`, parse + error control, 4 workers | **224,593 documents/s** |
+| `fmt` + `cpp-httplib` integration | **1,000 requests; 500 errors routed** |
+
+Verification results:
+
+```text
+Native CTest                         3/3 passed
+nlohmann/json external CTest        4/4 passed
+fmt + cpp-httplib local CTest       4/4 passed
+Windows sanitizer fuzz smoke       100,000 inputs passed
+```
+
+The benchmark machine was an AMD Ryzen 7 PRO 1700X with 8 physical cores,
+16 logical processors, 31.95 GiB RAM, Windows 10 Pro, and Clang 22.1.6.
+Detailed methodology and baseline comparisons are available in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 ## Architecture
 
 ```text
