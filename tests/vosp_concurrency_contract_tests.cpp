@@ -10,6 +10,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -228,6 +229,56 @@ namespace
         return check(succeeded, "worker may signal shutdown without self-join");
     }
 
+    bool test_worker_rejects_all_submission_forms_after_shutdown()
+    {
+        IndustrialWorkerPool pool{1, 2};
+        pool.shutdown(ShutdownMode::DRAIN);
+
+        bool cancellable_submit_rejected = false;
+        try
+        {
+            static_cast<void>(pool.submit_cancellable(
+                [](std::stop_token) -> OperationResult { return {}; }));
+        }
+        catch (const std::runtime_error&)
+        {
+            cancellable_submit_rejected = true;
+        }
+
+        bool dispatch_rejected = false;
+        try
+        {
+            pool.dispatch([]() -> OperationResult { return {}; });
+        }
+        catch (const std::runtime_error&)
+        {
+            dispatch_rejected = true;
+        }
+
+        bool cancellable_dispatch_rejected = false;
+        try
+        {
+            pool.dispatch_cancellable(
+                [](std::stop_token) -> OperationResult { return {}; });
+        }
+        catch (const std::runtime_error&)
+        {
+            cancellable_dispatch_rejected = true;
+        }
+
+        std::vector<IndustrialWorkerPool::Task> batch;
+        batch.emplace_back([]() -> OperationResult { return {}; });
+        const auto accepted = pool.dispatch_bulk(batch);
+
+        return check(cancellable_submit_rejected,
+                     "cancellable submit after shutdown is rejected") &&
+               check(dispatch_rejected, "dispatch after shutdown is rejected") &&
+               check(cancellable_dispatch_rejected,
+                     "cancellable dispatch after shutdown is rejected") &&
+               check(accepted == 0 && static_cast<bool>(batch.front()),
+                     "bulk dispatch preserves work rejected after shutdown");
+    }
+
     bool test_async_logger_backpressure_recovery()
     {
         BlockingSink sink;
@@ -335,6 +386,7 @@ int main()
            test_worker_exception_contract() &&
            test_worker_clear_and_concurrent_shutdown() &&
            test_worker_initiated_shutdown() &&
+           test_worker_rejects_all_submission_forms_after_shutdown() &&
            test_async_logger_backpressure_recovery() &&
            test_async_logger_failure_and_shutdown_contract() ? 0 : 1;
 }

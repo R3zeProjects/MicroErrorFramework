@@ -1,149 +1,160 @@
-# Архитектура MicroErrorSystem
+# MicroErrorSystem architecture
 
-## Область ответственности
+## Scope
 
-Модуль описывает значение ошибки, категории ошибок и диспетчеризацию ошибок
-в специализированные регистры. Хранение регистров, синхронизация потоков и
-персистентность находятся за пределами текущей заготовки.
+MicroErrorSystem is a header-only C++23 micro-framework for building an error
+control and logging boundary around an application. It provides:
 
-## Компоненты
+- owned error values and category-based routing;
+- bounded in-memory error registers;
+- synchronous, synchronized, and externally scheduled error systems;
+- policy-based synchronous and asynchronous logging;
+- a bounded worker pool with backpressure and cooperative cancellation.
 
-### `Error`
+The framework does not define application-specific recovery, persistent
+storage, log rotation, distributed transport, or process-wide global state.
 
-Небольшой объект значения с кодом, сообщением и категорией. Объект владеет
-текстом сообщения, поэтому передача временной строки безопасна.
+## Design goals
 
-### `IRegister`
+- Keep the default API small and available through `<vosp.hpp>`.
+- Make ownership and shutdown behavior explicit.
+- Bound framework-managed queues and storage.
+- Select synchronization and metadata costs at compile time.
+- Keep error routing independent from logging and task scheduling.
 
-Абстрактный интерфейс регистра одной категории. Реализация отвечает за свою
-политику хранения, проверку дубликатов и удаление ошибок.
+## Components
 
-### `MemoryRegister`
+### Error model
 
-Готовая потокобезопасная реализация регистра на `std::unordered_set`. Она
-предоставляет среднюю O(1) сложность поиска, добавления и удаления и подходит
-как базовое in-memory-хранилище.
-Регистр ограничен параметром `capacity_limit` и жёстким пределом
-`max_register_capacity`; после достижения лимита новая ошибка отклоняется с
-`register_capacity_error_code`. Ошибка другой категории также отклоняется.
+`vosp::error::Error` owns a category, numeric code, and message. Equality
+compares all three fields. `Result<T>` is an alias for
+`std::expected<T, Error>`, and `OperationResult` represents an operation that
+returns no value on success.
 
-### `Handler`
+### Registers and routing
 
-Невладеющий маршрутизатор. Он последовательно проверяет категории переданных
-регистров и вызывает `add` или `remove` у первого совпавшего регистра.
+`IRegister` defines the category-specific `add`, `remove`, and `category`
+contract. `CategoryRegister<Category>` supplies the category implementation for
+custom registers.
 
-### `ErrorSystem`
+`MemoryRegister<Category>` is the built-in thread-safe implementation. It uses
+bounded `std::unordered_set` storage, rejects errors from another category, and
+reports duplicate, missing, and capacity failures through `OperationResult`.
 
-Внутренний `ErrorSystem<TypeRegister, TypeHandler, ...>` выбирает режим работы
-на этапе компиляции. Пользовательский API использует короткие псевдонимы:
+`Handler` routes an operation to the first matching register without adding
+synchronization. `ConcurrentHandler` adds one independent lock per register.
+Both handlers reference externally owned registers.
 
-- `SingleThreadedSystem<Registers...>`;
-- `MultiThreadedSystem<Registers...>`;
-- `AsyncSystem<Executor, Registers...>`.
+### Error systems
 
-Режимы:
+The public aliases select execution behavior at compile time:
 
-- `SingleThreadedRegister` + `SingleThreadedHandler` — без синхронизации;
-- `MultiThreadedRegister` + `MultiThreadedHandler` — операции защищены mutex;
-- `AsyncRegister<Executor>` + `AsyncHandler<Executor>` — операции передаются
-  внешнему executor и возвращают `std::future<OperationResult>`. Async handler
-  хранится через `shared_ptr` и захватывается задачей по значению, поэтому
-  уничтожение `AsyncSystem` после постановки задачи не использует уничтоженный
-  `this`.
+- `SingleThreadedSystem<...>` performs direct calls without handler locks;
+- `MultiThreadedSystem<...>` serializes operations independently per register;
+- `AsyncSystem<Executor, ...>` submits owned error values to an external
+  executor and returns `std::future<OperationResult>`.
 
-### `Result<T>`
+The asynchronous system shares its handler with submitted callbacks so that a
+callback never captures a destroyed `AsyncSystem` object. The executor and
+referenced registers remain externally owned.
 
-Псевдоним `std::expected<T, Error>` для операций, которым нужно вернуть либо
-значение, либо описание ошибки.
+### Logging
 
-### `Logger`
+`PolicyLogger` sends `LogEntry` values to one or more `ILogSink` instances.
+Its template policies select level filtering, metadata capture, and dispatch
+mode. The predefined `Logger` and `ParallelLogger` aliases cover the common
+serialized and concurrent sink paths. `AsyncSinkDispatch` adds a bounded queue,
+blocking backpressure, batch delivery, explicit `flush`, and failure counters.
 
-`Logger` публикует `LogEntry` в один или несколько невладеющих `ILogSink`.
-Регистры и logger разделены: регистр хранит состояние ошибок, logger передаёт
-события наблюдаемости. Список sink копируется под mutex, а пользовательские
-вызовы sink выполняются после освобождения mutex. Это допускает reentrant
-`attach/detach`, но sink по-прежнему должен жить дольше logger.
+Sinks may be attached by reference or by `std::shared_ptr`. Reference-attached
+sinks are non-owning; shared sinks remain owned until detachment or logger
+destruction. Sink callbacks execute outside the sink-list mutex.
 
-### `vosp.hpp`
+`ConsoleSink` writes each record immediately. `BufferedStreamSink` maintains a
+buffer per producer thread and serializes only destination-stream writes.
+Explicit `flush()` is required when the caller needs final delivery status.
 
-Единая публичная точка подключения, экспортирующая API ошибок и logger.
+### Worker pool
 
-### `IndustrialWorkerPool`
+`IndustrialWorkerPool` owns a fixed set of `std::jthread` workers and a
+preallocated ring queue. Both worker count and queue capacity are bounded by
+1,024. A full queue applies blocking backpressure until capacity becomes
+available or shutdown starts.
 
-An owning `std::jthread` executor with a fixed worker count. Tasks use a
-preallocated bounded ring queue, so steady-state submission does not allocate
-queue nodes. `DRAIN` processes accepted work before workers exit, while
-`CANCEL_PENDING` resolves queued futures with a cancellation error and requests
-cooperative cancellation from active callbacks. Worker-initiated shutdown only
-signals the transition; the owner performs the final joins and cannot self-join.
-State is observable through `pending_tasks()`, `active_tasks()`, and
-`is_stopping()`. A task item stores exactly one ordinary or cancellable callback,
-avoiding nested `std::function` wrappers. Tracked `submit()` creates a future;
-fire-and-forget `dispatch()` omits that shared state and exposes aggregate
-failure/cancellation counters. `dispatch_bulk()` amortizes producer-side
-locking across grouped ring-buffer refills while workers still claim one task
-at a time, preserving precise `clear_queue()` cancellation semantics.
+Tracked `submit` operations return futures. Fire-and-forget `dispatch`
+operations avoid promise/future shared state and expose aggregate failure and
+cancellation counters. Cancellable callbacks receive `std::stop_token` and
+must cooperate by checking it.
 
-## Поток обработки
+### Public entry point
+
+`<vosp.hpp>` includes the error, logger, worker-pool, and version APIs. Focused
+headers remain available when compile-time isolation is useful.
+
+## Control flow
+
+Error registration:
 
 ```text
-Error
-  │
-  ▼
-Handler::add/remove
-  │ сравнение Category
-  ▼
-IRegister соответствующей категории
-  │
-  ▼
-OperationResult или std::future<OperationResult>
+Error -> ErrorSystem/Handler -> category match -> IRegister -> OperationResult
 ```
 
-## Инварианты
+Asynchronous logging:
 
-- `Handler` не владеет регистрами;
-- регистры должны жить дольше `Handler`;
-- у одного `Handler` не должно быть нескольких регистров одной категории;
-- `Category::NONE` не маршрутизируется в специализированный регистр;
-- однопоточный режим не обеспечивает потокобезопасность;
-- многопоточный режим синхронизирует операции через `ErrorSystem`;
-- асинхронный режим не владеет executor, он должен жить дольше всех futures;
-  переданные регистры также должны жить дольше всех async futures;
-- `[[nodiscard]]` результаты `add`, `remove` и `Result` нельзя игнорировать.
+```text
+Error -> PolicyLogger -> bounded queue -> logger worker -> ILogSink
+```
 
-## Точки расширения
+The two flows are intentionally independent. An application may register an
+error, log it, do both, or do neither.
 
-Новые регистры добавляются наследованием от
-`CategoryRegister<НоваяКатегория>`. Новый регистр должен реализовать собственную
-политику хранения, `add()` и `remove()`.
+## Ownership and lifetime
 
-## Ограничения текущей версии
+- `Error` and queued asynchronous records own their message storage.
+- Handlers and error systems do not own registers.
+- `AsyncSystem` does not own its executor.
+- A reference-attached sink must outlive all logger calls that can reach it.
+- A shared sink is retained by the logger while attached.
+- Stream sinks do not own their `std::ostream`.
+- `IndustrialWorkerPool` owns and joins its workers.
 
-- при совпадении нескольких регистров используется первый;
-- операции регистрации возвращают `OperationResult`, поэтому причина отказа
-  передаётся через `Error`;
-- асинхронный executor должен принимать `std::function<OperationResult()>` и
-  возвращать `std::future<OperationResult>`;
-- logger не владеет sink, а `ConsoleSink` и `BufferedStreamSink` не владеют
-  переданным `std::ostream`; перед уничтожением потока вывода buffered sink
-  требует явного `flush()` после завершения producer-потоков;
-- предопределённые ошибки используют `inline const`, поскольку `Error` владеет
-  сообщением через `std::string` и не является литеральным `constexpr`-типом.
+For asynchronous error operations, the executor and registers must outlive all
+submitted operations and their futures. For buffered output, producer threads
+must finish before the final explicit flush and stream destruction.
 
-## Упрощение реализации C++23
+## Concurrency and shutdown invariants
 
-- `Handler` и `ConcurrentHandler` сохраняют публичные имена, но используют одно
-  внутреннее ядро маршрутизации; синхронизация включается через `if constexpr`;
-- две синхронные специализации `ErrorSystem` используют одно общее RAII-ядро;
-- `Error::operator!=` синтезируется стандартом из defaulted `operator==`;
-- уровни logger используют один constrained forwarding-путь без дублирования
-  перегрузок для lvalue/rvalue;
-- shards буферизованного sink хранятся непосредственно в `std::deque`, которая
-  сохраняет адреса элементов, и выровнены для исключения false sharing;
-- четыре конструктора внутренних worker-задач заменены одним constrained
-  конструктором; явная ветка исполнения двух callback-типов оставлена после
-  benchmark-проверки как более быстрая на используемом Clang toolchain.
+- `SingleThreadedSystem` requires external single-threaded access.
+- `MemoryRegister` synchronizes its own storage.
+- `MultiThreadedSystem` and `AsyncSystem` also serialize routing per register.
+- Parallel logger dispatch requires every attached sink to support concurrent
+  `write` calls.
+- `ShutdownMode::DRAIN` accepts no new work and runs all queued tasks.
+- `ShutdownMode::CANCEL_PENDING` cancels queued tasks and requests cooperative
+  cancellation from active cancellable tasks.
+- A worker may request pool shutdown, but only an owning external thread joins
+  the workers; this prevents self-join deadlocks.
 
-Публичные implementation-заголовки сокращены с 2 184 до 2 072 строк. Это
-снижение на 112 строк (5,1%) без изменения документированных пользовательских
-вызовов.
+## Extension points
+
+- Add an application category and derive its storage from
+  `CategoryRegister<NewCategory>`.
+- Provide an executor whose `submit` operation satisfies `AsyncExecutor`.
+- Implement `ILogSink::write` for a new logging destination.
+- Define logger filtering, metadata, or dispatch policies that satisfy the
+  corresponding concepts.
+
+## Operational limits
+
+- Routing uses the first register with a matching category; configure at most
+  one register per category.
+- `Category::NONE` is not routed to a specialized register.
+- Register capacity is capped by `max_register_capacity`.
+- Worker and asynchronous logger queues are bounded and apply backpressure.
+- Running tasks cannot be forcefully interrupted safely.
+- Cross-producer ordering in `BufferedStreamSink` is unspecified.
+- Predefined errors are `inline const` because `Error` owns a `std::string` and
+  is not a literal `constexpr` type.
+
+See [API contracts](API_CONTRACTS.md) for precise lifetime and shutdown rules,
+and [the API guide](README.en.md) for usage examples.

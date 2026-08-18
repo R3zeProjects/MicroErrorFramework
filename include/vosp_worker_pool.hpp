@@ -127,6 +127,7 @@ namespace vosp::async
          * @brief Submits a task that can cooperatively observe cancellation.
          * @param task Callback that must check stop_token and return promptly.
          * @return Future containing the task result.
+         * @throws std::runtime_error If shutdown has started.
          */
         [[nodiscard]] std::future<OperationResult> submit_cancellable(CancellableTask task)
         {
@@ -146,7 +147,11 @@ namespace vosp::async
             enqueue(TaskItem{std::move(task), std::nullopt});
         }
 
-        /** @brief Fire-and-forget submission with cooperative cancellation. */
+        /**
+         * @brief Submits fire-and-forget work with cooperative cancellation.
+         * @param task Callback that must check stop_token and return promptly.
+         * @throws std::runtime_error If shutdown has started.
+         */
         void dispatch_cancellable(CancellableTask task)
         {
             enqueue(TaskItem{std::move(task), std::nullopt});
@@ -155,7 +160,7 @@ namespace vosp::async
         /**
          * @brief Moves a batch of fire-and-forget tasks into the bounded queue.
          * @param tasks Callbacks consumed in order; accepted elements are moved from.
-         * @return Number accepted before the entire batch or shutdown.
+         * @return Number of callbacks accepted before completion or shutdown.
          * @note Uses grouped queue refills to reduce producer-side lock contention.
          */
         [[nodiscard]] std::size_t dispatch_bulk(std::span<Task> tasks)
@@ -268,7 +273,10 @@ namespace vosp::async
         }
 
     public:
+        /** @brief Returns the fixed number of worker threads. */
         [[nodiscard]] std::size_t worker_count() const noexcept { return worker_count_; }
+
+        /** @brief Returns the maximum number of queued tasks. */
         [[nodiscard]] std::size_t queue_capacity() const noexcept { return queue_capacity_; }
 
         /**
@@ -323,6 +331,8 @@ namespace vosp::async
          * @param mode Drain queued tasks or cancel them before joining.
          * @note DRAIN does not request cooperative cancellation. CANCEL_PENDING
          * requests cancellation for active tasks and cancels queued futures.
+         * @note A call from a worker only signals shutdown. An external owner
+         * performs the final joins through shutdown() or destruction.
          */
         void shutdown(ShutdownMode mode = ShutdownMode::CANCEL_PENDING) noexcept
         {

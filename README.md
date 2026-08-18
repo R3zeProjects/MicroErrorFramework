@@ -90,19 +90,6 @@ start latch. The logger keeps `Error` and asynchronous `LogEntry` payloads
 owning; the benchmark does not weaken those lifetime guarantees. Results are
 component measurements, not universal performance guarantees.
 
-### Simplification audit
-
-The C++23 simplification pass kept the documented call sites and reduced the
-three public implementation headers from 2,184 to 2,072 lines (112 lines,
-5.1%). The measured `include/`, `tests/`, and `benchmarks/` source set fell from
-4,742 to 4,630 lines. The reduction came from shared handler/system cores,
-synthesized comparison, standard erase algorithms, one constrained logging
-forwarder per level, stable `std::deque` sink shards, and one generic worker
-task constructor. Hot-path abstractions were retained only when the benchmark
-showed no regression; an attempted `std::visit` worker dispatch was rejected
-because the explicit two-variant branch optimized better on this toolchain.
-
-
 The common one-sink path uses an atomic sink pointer and avoids the registry
 mutex. `ParallelSinkDispatch` removes callback serialization for thread-safe
 sinks, while `MinimalMetadataPolicy` omits timestamp and thread-id collection.
@@ -112,14 +99,11 @@ modes without a separate fast-logger class. Throughput remains machine-dependent
 ## Architecture
 
 ```text
-Error
+Error ──► ErrorSystem ──► Handler ──► CategoryRegister ──► OperationResult
   │
-  ▼
-Handler ─────► CategoryRegister ─────► Error storage
-  │
-  ├──────────► Result<T> / OperationResult
-  ├──────────► Logger ─────► Sink
-  └──────────► AsyncSystem ─────► IndustrialWorkerPool
+  └────► PolicyLogger ──► ILogSink
+
+AsyncSystem ──► external executor (for example, IndustrialWorkerPool)
 ```
 
 The system mode is selected by types rather than runtime flags:
@@ -581,8 +565,10 @@ MicroErrorSystem/
 ├── benchmarks/                  # native and third-party benchmarks
 ├── fuzz/                        # LibFuzzer target
 ├── docs/
-│   ├── ARCHITECTURE.md
-│   └── BENCHMARKS.md
+│   ├── ARCHITECTURE.md          # components, ownership and control flow
+│   ├── API_CONTRACTS.md         # lifetime and concurrency guarantees
+│   ├── README.en.md             # focused API guide
+│   └── BENCHMARKS.md            # benchmark methodology and results
 ├── CMakeLists.txt
 └── .github/workflows/ci.yml
 ```
@@ -602,8 +588,8 @@ first stable generation.
 ## Current limitations
 
 - The API is version `0.1.0-beta` and may evolve before `1.0.0`.
-- Registers are non-owning; logger sinks are either non-owning references or
-  logger-owned `std::shared_ptr` instances.
+- Error systems reference externally owned registers; logger sinks are either
+  non-owning references or logger-owned `std::shared_ptr` instances.
 - A running worker task cannot be forcefully interrupted safely.
 - `Category::NONE` is not routed to a specialized category register.
 - `Error` stores its message in `std::string`, so predefined errors are
@@ -619,7 +605,7 @@ first stable generation.
 - [Public API and concurrency contracts](docs/API_CONTRACTS.md)
 - [Benchmark report](docs/BENCHMARKS.md)
 - [External workload validation](docs/EXTERNAL_WORKLOADS.md)
-- [English API documentation](docs/README.en.md)
+- [API guide](docs/README.en.md)
 - [Changelog](CHANGELOG.md)
 
 ## License

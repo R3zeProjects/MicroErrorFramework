@@ -56,6 +56,19 @@ namespace
         std::atomic<std::uint32_t> writes_ = 0;
     };
 
+    /** @brief Sink that observes delivery and reports a recoverable failure. */
+    class RejectingSink final : public ILogSink
+    {
+    public:
+        [[nodiscard]] bool write(const LogEntry&) override
+        {
+            ++writes;
+            return false;
+        }
+
+        std::size_t writes = 0;
+    };
+
     /** @brief Sink that mutates logger membership while handling a record. */
     class ReentrantSink final : public ILogSink
     {
@@ -356,6 +369,69 @@ namespace
         return check(weak_sink.expired(), "owned sink is released after detach");
     }
 
+    /** @brief Verifies null ownership and multi-sink failure aggregation. */
+    bool test_sink_failure_contract()
+    {
+        Logger logger;
+        TestSink accepted_sink;
+        TestSink unknown_sink;
+        RejectingSink rejected_sink;
+        std::shared_ptr<ILogSink> null_sink;
+
+        if (!check(!logger.attach(std::move(null_sink)), "null owned sink is rejected") ||
+            !check(logger.attach(accepted_sink), "first sink is attached") ||
+            !check(logger.attach(rejected_sink), "second sink is attached") ||
+            !check(!logger.attach(accepted_sink), "duplicate sink is rejected"))
+        {
+            return false;
+        }
+
+        const bool accepted = logger.error(
+            Error{Category::DATABASE, 4002, "partial sink failure"});
+        return check(!accepted, "logger aggregates sink rejection") &&
+               check(accepted_sink.entries.size() == 1,
+                     "successful sink still receives the record") &&
+               check(rejected_sink.writes == 1,
+                     "rejecting sink receives the record") &&
+               check(!logger.detach(unknown_sink),
+                     "detaching an unknown sink is rejected");
+    }
+
+    /** @brief Verifies shared sink ownership across asynchronous delivery. */
+    bool test_async_owned_sink_lifetime()
+    {
+        using AsyncLogger =
+            PolicyLogger<AcceptAllPolicy, AsyncSinkDispatch, MinimalMetadataPolicy>;
+
+        AsyncLogger logger;
+        auto sink = std::make_shared<ConcurrentTestSink>();
+        const std::weak_ptr<ConcurrentTestSink> weak_sink = sink;
+        if (!check(logger.attach(sink), "attach async owned sink"))
+        {
+            return false;
+        }
+
+        sink.reset();
+        auto retained_sink = weak_sink.lock();
+        if (!check(static_cast<bool>(retained_sink), "async logger retains sink") ||
+            !check(logger.info(Error{Category::NETWORK, 4003, "async owned"}),
+                   "async owned sink accepts record"))
+        {
+            return false;
+        }
+
+        logger.flush();
+        if (!check(retained_sink->writes() == 1, "async owned sink receives record") ||
+            !check(logger.detach(*retained_sink), "detach async owned sink"))
+        {
+            return false;
+        }
+
+        retained_sink.reset();
+        logger.shutdown();
+        return check(weak_sink.expired(), "async owned sink is released after detach");
+    }
+
     /** @brief Verifies bounded asynchronous delivery and flush semantics. */
     bool test_async_logger_policy()
     {
@@ -389,5 +465,7 @@ int main()
            test_concurrent_logging() &&
            test_parallel_logging() &&
            test_owned_sink_lifetime() &&
+           test_sink_failure_contract() &&
+           test_async_owned_sink_lifetime() &&
            test_async_logger_policy() ? 0 : 1;
 }

@@ -1,4 +1,4 @@
-# MicroErrorSystem — Documentation
+# MicroErrorSystem API guide
 
 `MicroErrorSystem` is a header-only C++23 module for describing, categorizing,
 and routing errors to category-specific registers. It uses `std::expected` for
@@ -17,16 +17,9 @@ operations that need to return either a value or an error.
 - bounded `IndustrialWorkerPool` with 1024 worker/queue limits, backpressure,
   and queued-task cancellation.
 
-## Requirements and build
-
-Requirements: CMake 3.25 or newer, a C++23 compiler, and a standard library
-with `std::expected` support.
-
-```text
-cmake -S MicroErrorSystem -B MicroErrorSystem/cmake-build-debug -DBUILD_TESTING=ON
-cmake --build MicroErrorSystem/cmake-build-debug --parallel
-ctest --test-dir MicroErrorSystem/cmake-build-debug --output-on-failure
-```
+For build instructions, validation profiles, and measured results, see the
+[project README](../README.md). Precise ownership and concurrency rules are in
+the [API contracts](API_CONTRACTS.md).
 
 ## Include the module
 
@@ -39,18 +32,8 @@ using namespace vosp::error;
 ```
 
 `vosp.hpp` is the single public entry point. The focused headers
-`vosp_error.hpp` and `vosp_logger.hpp` can be included separately to reduce
-compile time.
-
-## Benchmarks and sanitizers
-
-Build the benchmark with `-DBUILD_BENCHMARKS=ON`; it measures insert operations
-in `MemoryRegister`. Use Clang/Ninja with `-DENABLE_SANITIZERS=ON` to run
-AddressSanitizer and UndefinedBehaviorSanitizer checks.
-An optional LibFuzzer target is available on Unix platforms with Clang using
-`-DBUILD_FUZZERS=ON`.
-An opt-in integration stress target uses the pinned `nlohmann/json` v3.12.0
-parser as an external workload and does not add it to the runtime API.
+`vosp_error.hpp`, `vosp_logger.hpp`, and `vosp_worker_pool.hpp` can be included
+separately to reduce compile time.
 
 ## Create an error
 
@@ -79,34 +62,18 @@ const Error same{Category::NETWORK, 1001, "Connection refused"};
 const bool equal = error == same;
 ```
 
-## Implement a register
+## Create registers
 
-`CategoryRegister` provides `category()`. A concrete register only implements
-`add()` and `remove()`:
+For bounded in-memory storage, use `MemoryRegister`:
 
 ```cpp
-class NetworkRegister final : public CategoryRegister<Category::NETWORK>
-{
-public:
-    OperationResult add(const Error& error) override
-    {
-        errors_.push_back(error);
-        return {};
-    }
-
-    OperationResult remove(const Error& error) override
-    {
-        // A production implementation should remove error from its storage.
-        return {};
-    }
-
-private:
-    std::vector<Error> errors_;
-};
+MemoryRegister<Category::NETWORK> network;
+MemoryRegister<Category::DATABASE> database;
 ```
 
-The register owns its storage and defines duplicate, removal, and
-thread-safety policies.
+The optional constructor arguments configure the initial reservation and
+capacity limit. Custom storage can derive from `CategoryRegister<Category>` and
+implement `add()` and `remove()`.
 
 ## Route errors with Handler
 
@@ -114,9 +81,6 @@ thread-safety policies.
 The first register with a matching category receives the operation:
 
 ```cpp
-NetworkRegister network;
-DatabaseRegister database;
-
 Handler handler{network, database};
 
 const Error error{Category::NETWORK, 1001, "Connection refused"};
@@ -127,7 +91,7 @@ if (!result) {
     std::cerr << result.error().message();
 }
 
-handler.remove(error);
+const OperationResult removed = handler.remove(error);
 ```
 
 Use one register per category. If several registers have the same category, the
@@ -139,12 +103,12 @@ The execution mode is selected at compile time through a dedicated system alias:
 
 ```cpp
 using System = MultiThreadedSystem<
-    NetworkRegister,
-    DatabaseRegister
+    MemoryRegister<Category::NETWORK>,
+    MemoryRegister<Category::DATABASE>
 >;
 
 System system{network, database};
-system.add(error);
+const OperationResult registration_result = system.add(error);
 ```
 
 Available modes:
@@ -166,6 +130,7 @@ public:
     }
 };
 
+using NetworkRegister = MemoryRegister<Category::NETWORK>;
 using System = AsyncSystem<Executor, NetworkRegister>;
 
 Executor executor;
@@ -296,16 +261,6 @@ avoids callback serialization, and omits timestamp/thread-id capture.
 1,024 pending records, drains batches on one worker, and provides `flush()` plus
 `failed_records()` for lifecycle and sink-failure control.
 
-## C++23 simplification notes
-
-The documented API calls remain unchanged after the simplification pass. The
-three implementation headers were reduced from 2,184 to 2,072 lines. Shared
-internal cores now implement synchronous systems and handlers, `operator!=` is
-synthesized from `Error::operator==`, logger level methods use constrained
-perfect forwarding, and buffered sink shards use stable `std::deque` storage.
-The worker hot path deliberately keeps an explicit two-variant branch because
-local benchmarks showed it optimizing better than `std::visit` on Clang 22.
-
 ## Predefined errors
 
 The module provides ready-to-use values:
@@ -325,8 +280,9 @@ can be returned through `std::unexpected`.
 ## Extending the module
 
 1. Add a category to `Category`.
-2. Create `CategoryRegister<NewCategory>`.
-3. Implement `add()` and `remove()`.
+2. Use `MemoryRegister<NewCategory>` or derive from
+   `CategoryRegister<NewCategory>`.
+3. For custom storage, implement `add()` and `remove()`.
 4. Pass the register to `Handler`.
 5. Add routing tests and update the documentation.
 

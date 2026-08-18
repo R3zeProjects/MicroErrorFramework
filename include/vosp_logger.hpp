@@ -173,7 +173,8 @@ namespace vosp::logger
 
     /**
      * @brief Destination for formatted or structured log records.
-     * @note A sink attached by reference must outlive the Logger that references it.
+     * @note A sink attached by reference must outlive every logger call that can
+     * reach it, including in-flight asynchronous delivery.
      */
     class ILogSink
     {
@@ -254,7 +255,8 @@ namespace vosp::logger
 
         /**
          * @brief Publishes an owned error without forcing a second message copy.
-         * @note The default keeps compatibility for custom ILogger types.
+         * @note The default delegates to write(); implementations may override
+         * this function to consume the owned value directly.
          */
         [[nodiscard]] virtual bool write_owned(Level level, Error&& error)
         {
@@ -299,7 +301,7 @@ namespace vosp::logger
 
         /**
          * @brief Creates a logger with an initial set of sinks.
-         * @param sinks Sink instances that must outlive this logger.
+         * @param sinks Sinks that must outlive all calls that can reach them.
          */
         template<SinkType... Sinks>
         explicit PolicyLogger(Sinks&... sinks)
@@ -319,7 +321,7 @@ namespace vosp::logger
 
         /**
          * @brief Adds a sink to the broadcast list.
-         * @param sink Sink that must outlive this logger.
+         * @param sink Sink that must outlive all calls that can reach it.
          * @return false when the sink is already registered.
          */
         [[nodiscard]] bool attach(ILogSink& sink) override
@@ -347,6 +349,8 @@ namespace vosp::logger
          * @brief Removes a sink from the broadcast list.
          * @param sink Sink to remove.
          * @return true when the sink was registered.
+         * @note Detachment prevents future selection but does not wait for an
+         * in-flight callback that already selected the sink.
          */
         [[nodiscard]] bool detach(ILogSink& sink) override
         {
@@ -550,6 +554,7 @@ namespace vosp::logger
             return failed_records_.load(std::memory_order_relaxed);
         }
 
+        /** @brief Drains accepted records and joins the background worker. */
         void shutdown() noexcept
         {
             const std::lock_guard shutdown_lock{shutdown_mutex_};
@@ -659,7 +664,7 @@ namespace vosp::logger
         std::jthread worker_;
     };
 
-    /** @brief Backward-compatible logger with no level filtering. */
+    /** @brief Default serialized logger with no level filtering. */
     using Logger = PolicyLogger<AcceptAllPolicy>;
 
     /**

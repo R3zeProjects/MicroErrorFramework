@@ -2,7 +2,7 @@
 
 /**
  * @file vosp.hpp
- * @brief Public entry point for the MicroErrorSystem API.
+ * @brief Public entry point for error, logging, worker-pool, and version APIs.
  */
 
 #include "vosp_error.hpp"

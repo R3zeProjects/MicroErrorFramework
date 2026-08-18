@@ -176,6 +176,60 @@ namespace
                      "MemoryRegister reports capacity");
     }
 
+    /** @brief Verifies MemoryRegister constructor and reserve boundaries. */
+    bool test_memory_register_limits()
+    {
+        bool zero_capacity_rejected = false;
+        try
+        {
+            MemoryRegister<Category::NETWORK> invalid{0, 0};
+        }
+        catch (const std::invalid_argument&)
+        {
+            zero_capacity_rejected = true;
+        }
+
+        bool oversized_reservation_rejected = false;
+        try
+        {
+            MemoryRegister<Category::NETWORK> invalid{3, 2};
+        }
+        catch (const std::invalid_argument&)
+        {
+            oversized_reservation_rejected = true;
+        }
+
+        MemoryRegister<Category::NETWORK> register_instance{1, 2};
+        const Error stored{Category::NETWORK, 710, "stored"};
+        if (!succeeded(register_instance.add(stored), "bounded register add"))
+        {
+            return false;
+        }
+
+        bool reserve_limit_rejected = false;
+        try
+        {
+            register_instance.reserve(3);
+        }
+        catch (const std::invalid_argument&)
+        {
+            reserve_limit_rejected = true;
+        }
+
+        const auto wrong_remove = register_instance.remove(
+            Error{Category::DATABASE, 710, "stored"});
+        return check(zero_capacity_rejected, "zero register capacity is rejected") &&
+               check(oversized_reservation_rejected,
+                     "initial reservation above capacity is rejected") &&
+               check(reserve_limit_rejected,
+                     "reserve above capacity is rejected") &&
+               check(register_instance.size() == 1 && register_instance.contains(stored),
+                     "failed reserve preserves register contents") &&
+               check(!wrong_remove &&
+                         wrong_remove.error().code() == register_category_error_code,
+                     "remove rejects a mismatched category");
+    }
+
     /**
      * @brief Minimal executor test double implementing the AsyncExecutor contract.
      */
@@ -548,6 +602,7 @@ namespace
 int main()
 {
     return test_error() && test_result() && test_handler() &&
-           test_memory_register() && test_execution_modes() &&
+           test_memory_register() && test_memory_register_limits() &&
+           test_execution_modes() &&
            test_worker_pool() ? 0 : 1;
 }

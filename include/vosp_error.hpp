@@ -144,8 +144,8 @@ namespace vosp::error
 
 
     /**
-     * @brief Non-owning interface for a category-specific error register.
-     * @note Implementations must outlive every Handler that references them.
+     * @brief Interface for a category-specific error register.
+     * @note A register must outlive every handler or system that references it.
      */
     class IRegister
     {
@@ -194,6 +194,12 @@ namespace vosp::error
     class MemoryRegister final : public CategoryRegister<RegisterCategory>
     {
     public:
+        /**
+         * @brief Creates a bounded register and reserves its initial storage.
+         * @param expected_size Initial number of elements to reserve.
+         * @param capacity_limit Maximum number of errors retained by this instance.
+         * @throws std::invalid_argument If either limit is invalid.
+         */
         explicit MemoryRegister(
             std::size_t expected_size = 64,
             std::size_t capacity_limit = max_register_capacity)
@@ -203,6 +209,10 @@ namespace vosp::error
             errors_.reserve(expected_size);
         }
 
+        /**
+         * @brief Reserves storage for at least the requested number of errors.
+         * @throws std::invalid_argument If the request exceeds the capacity limit.
+         */
         void reserve(std::size_t expected_size)
         {
             validate_limits(expected_size, capacity_limit_);
@@ -216,6 +226,7 @@ namespace vosp::error
             return capacity_limit_;
         }
 
+        /** @copydoc IRegister::add */
         [[nodiscard]] OperationResult add(const Error& error) override
         {
             const std::lock_guard lock{mutex_};
@@ -259,6 +270,7 @@ namespace vosp::error
             return {};
         }
 
+        /** @copydoc IRegister::remove */
         [[nodiscard]] OperationResult remove(const Error& error) override
         {
             const std::lock_guard lock{mutex_};
@@ -284,12 +296,14 @@ namespace vosp::error
             return {};
         }
 
+        /** @brief Returns whether an equal error is currently registered. */
         [[nodiscard]] bool contains(const Error& error) const
         {
             const std::lock_guard lock{mutex_};
             return errors_.contains(error);
         }
 
+        /** @brief Returns the current number of registered errors. */
         [[nodiscard]] std::size_t size() const noexcept
         {
             const std::lock_guard lock{mutex_};
@@ -532,8 +546,8 @@ namespace vosp::error
     public:
         /**
          * @brief Creates an asynchronous system using an external executor.
-         * @param executor Executor that must outlive this system.
-         * @param registers Registers that must outlive this system.
+         * @param executor Executor that must outlive all submitted operations.
+         * @param registers Registers that must outlive all submitted operations.
          */
         explicit ErrorSystem(Executor& executor, Registers&... registers)
             : executor_(executor),
