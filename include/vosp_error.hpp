@@ -237,8 +237,17 @@ namespace vosp::error
                 });
             }
 
-            if (errors_.size() >= capacity_limit_ && !errors_.contains(error))
+            if (errors_.size() >= capacity_limit_)
             {
+                if (errors_.contains(error))
+                {
+                    return std::unexpected(Error{
+                        RegisterCategory,
+                        duplicate_error_code,
+                        "Error is already registered"
+                    });
+                }
+
                 return std::unexpected(Error{
                     RegisterCategory,
                     register_capacity_error_code,
@@ -246,7 +255,7 @@ namespace vosp::error
                 });
             }
 
-            if (errors_.contains(error))
+            if (!errors_.insert(error).second)
             {
                 return std::unexpected(Error{
                     RegisterCategory,
@@ -255,7 +264,6 @@ namespace vosp::error
                 });
             }
 
-            errors_.insert(error);
             return {};
         }
 
@@ -368,7 +376,7 @@ namespace vosp::error
     private:
         [[nodiscard]] OperationResult dispatch(const Error& error, bool remove_error)
         {
-            for (const auto register_reference : registers_)
+            for (const auto& register_reference : registers_)
             {
                 IRegister& register_instance = register_reference.get();
 

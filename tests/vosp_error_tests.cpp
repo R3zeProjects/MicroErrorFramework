@@ -140,18 +140,19 @@ namespace
         MemoryRegister<Category::NETWORK> limited_register{0, 2};
         const Error error{Category::NETWORK, 700, "memory"};
         const Error wrong_category{Category::DATABASE, 701, "wrong category"};
+        const Error limited_one_error{Category::NETWORK, 702, "limited one"};
+        const Error limited_two_error{Category::NETWORK, 703, "limited two"};
 
         const OperationResult added = register_instance.add(error);
         const OperationResult duplicate = register_instance.add(error);
         const OperationResult removed = register_instance.remove(error);
         const OperationResult missing = register_instance.remove(error);
         const OperationResult rejected_category = register_instance.add(wrong_category);
-        const OperationResult limited_one = limited_register.add(
-            Error{Category::NETWORK, 702, "limited one"});
-        const OperationResult limited_two = limited_register.add(
-            Error{Category::NETWORK, 703, "limited two"});
+        const OperationResult limited_one = limited_register.add(limited_one_error);
+        const OperationResult limited_two = limited_register.add(limited_two_error);
         const OperationResult limited_three = limited_register.add(
             Error{Category::NETWORK, 704, "limited three"});
+        const OperationResult limited_duplicate = limited_register.add(limited_one_error);
 
         return succeeded(added, "MemoryRegister add") &&
                check(!duplicate && duplicate.error().code() == duplicate_error_code,
@@ -167,6 +168,9 @@ namespace
                check(!limited_three &&
                          limited_three.error().code() == register_capacity_error_code,
                      "MemoryRegister rejects over capacity") &&
+               check(!limited_duplicate &&
+                         limited_duplicate.error().code() == duplicate_error_code,
+                     "MemoryRegister keeps duplicate error priority at capacity") &&
                check(limited_register.capacity_limit() == 2,
                      "MemoryRegister reports capacity");
     }
