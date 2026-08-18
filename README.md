@@ -10,7 +10,7 @@ particular operating system or domain.
 > **Main idea:** an error-control and logging contour independent of the host system.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.1.0-informational)
+![API](https://img.shields.io/badge/API-0.1.0--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -46,22 +46,22 @@ control layer in larger C++ systems.
 
 All values below are real local Release measurements, not theoretical claims.
 
-| Workload | Result |
-| --- | ---: |
-| Single-threaded register inserts | **3.6324M operations/s** |
-| Multi-threaded system, 3 workers | **4.53325M operations/s** |
-| Async system, 1,000 operations | **244,678 operations/s** |
-| `nlohmann/json`, parse-only, 20,000 documents | **111,875 documents/s** |
-| `nlohmann/json`, parse + error control, 4 workers | **224,593 documents/s** |
-| `fmt` + `cpp-httplib` integration | **1,000 requests; 500 errors routed** |
-| MicroErrorSystem `Logger`, single-threaded | **4.00763M records/s** |
-| MicroErrorSystem policy logger, single-threaded | **4.95373M records/s** |
-| `spdlog` `null_sink`, single-threaded | **15.3891M records/s** |
-| MicroErrorSystem `Logger`, 4 workers (serialized sink safety) | **2.21746M records/s** |
-| MicroErrorSystem `ParallelLogger`, 4 workers (full metadata) | **10.2501M records/s** |
-| MicroErrorSystem policy logger, 4 workers (minimal metadata) | **12.9559M records/s** |
-| MicroErrorSystem async policy, end-to-end | **4.56479M records/s** |
-| `spdlog` `null_sink`, 4 workers | **46.8538M records/s** |
+| Feature | Measured workload | Result |
+| --- | --- | ---: |
+| Typed register | 100,000 single-threaded inserts | **4.62022M operations/s** |
+| Concurrent category routing | 99,999 inserts over 3 workers | **5.89096M operations/s** |
+| Asynchronous error system | 1,000 completed operations | **923,361 operations/s** |
+| Tracked worker tasks | `submit()`, 4 workers | **514,838 tasks/s** |
+| Fire-and-forget tasks | `dispatch()`, 4 workers | **3.01123M tasks/s** |
+| Grouped task submission | `dispatch_bulk()`, 4 workers | **3.44851M tasks/s** |
+| Logger dispatch | Prepared records, 1 thread | **20.6567M records/s** |
+| Sharded logger dispatch | Prepared records, 4 workers | **71.1305M records/s** |
+| Owned-record formatting | Equal-output formatting, 1 thread | **5.75945M records/s** |
+| Owned-record formatting | Equal-output formatting, 4 workers | **10.3093M records/s** |
+| Immediate stream sink | `ConsoleSink`, 1 thread | **17.0054M records/s** |
+| Buffered stream sink | Per-thread buffering, 4 workers | **51.6983M records/s** |
+| JSON integration | Parse and route errors, 4 workers | **311,158 documents/s** |
+| HTTP integration | Concurrent local workload | **1,000 requests; 500 errors routed** |
 
 Verification results:
 
@@ -74,15 +74,29 @@ Windows sanitizer fuzz smoke       100,000 inputs passed
 
 The benchmark machine was an AMD Ryzen 7 PRO 1700X with 8 physical cores,
 16 logical processors, 31.95 GiB RAM, Windows 10 Pro, and Clang 22.1.6.
-Detailed methodology and baseline comparisons are available in
-[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+Detailed methodology and raw measurement ranges are available in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md). Exact median/minimum/maximum values
+for the latest full run are in
+[docs/BENCHMARK_RUN_2026-08-18.md](docs/BENCHMARK_RUN_2026-08-18.md).
 
-The logger comparison uses `spdlog v1.15.3` with its `null_sink` and the same
-1,000,000 formatted records. Values are medians of five launches. `spdlog` is
-faster in this narrow sink-throughput workload. The result is expected:
-MicroErrorSystem additionally constructs a typed `Error`, `LogEntry`,
-timestamp, thread id, and executes a user sink callback. This is a component
-comparison, not a claim that one complete framework replaces the other.
+Logger values are medians of seven Release launches after one excluded warm-up
+process over 3,000,000 owned records. Worker construction is excluded with a
+start latch. The logger keeps `Error` and asynchronous `LogEntry` payloads
+owning; the benchmark does not weaken those lifetime guarantees. Results are
+component measurements, not universal performance guarantees.
+
+### Simplification audit
+
+The C++23 simplification pass kept the documented call sites and reduced the
+three public implementation headers from 2,184 to 2,072 lines (112 lines,
+5.1%). The measured `include/`, `tests/`, and `benchmarks/` source set fell from
+4,742 to 4,630 lines. The reduction came from shared handler/system cores,
+synthesized comparison, standard erase algorithms, one constrained logging
+forwarder per level, stable `std::deque` sink shards, and one generic worker
+task constructor. Hot-path abstractions were retained only when the benchmark
+showed no regression; an attempted `std::visit` worker dispatch was rejected
+because the explicit two-variant branch optimized better on this toolchain.
+
 
 The common one-sink path uses an atomic sink pointer and avoids the registry
 mutex. `ParallelSinkDispatch` removes callback serialization for thread-safe
@@ -212,17 +226,33 @@ auto future = pool.submit([] {
     return vosp::error::OperationResult{};
 });
 
+pool.dispatch([] {
+    return vosp::error::OperationResult{};
+});
+
 const vosp::error::OperationResult result = future.get();
 pool.shutdown(vosp::async::ShutdownMode::DRAIN);
 ```
 
 The hard limits are 1,024 workers and 1,024 queued tasks. `submit()` applies
-blocking backpressure. `clear_queue()` completes pending futures with a
-cancellation error. A running task is not forcefully interrupted; use
-`submit_cancellable()` and inspect its `std::stop_token` for cooperative
-cancellation.
+blocking backpressure. Queue slots are preallocated and reused without
+per-task queue-node allocation. `clear_queue()` completes pending futures with
+a cancellation error. `ShutdownMode::DRAIN` executes accepted work without
+requesting cancellation; `CANCEL_PENDING` cancels queued work and requests
+cooperative cancellation from active tasks. A running task is not forcefully
+interrupted, so cancellable tasks must inspect their `std::stop_token`.
+Use `submit()` when the caller needs a future. `dispatch()` avoids the
+promise/future allocation for fire-and-forget work; failures and cancelled
+dispatches remain observable through `failed_dispatches()` and
+`cancelled_dispatches()`.
+For sustained ingestion, `dispatch_bulk(std::span<Task>)` moves callbacks into
+the ring queue using grouped refills. It preserves bounded backpressure and
+returns the exact accepted count if shutdown interrupts a batch.
 
 ## Logging
+
+Choose the sink by delivery semantics. `ConsoleSink` writes each record
+immediately and is the clearest default for diagnostics:
 
 ```cpp
 #include <vosp.hpp>
@@ -237,6 +267,32 @@ logger.error(vosp::error::Error{
     "Connection refused"
 });
 ```
+
+For concurrent producers, `BufferedStreamSink` keeps the same logger API while
+reducing contention on the destination stream:
+
+```cpp
+#include <vosp.hpp>
+#include <iostream>
+
+vosp::logger::BufferedStreamSink sink{std::cout};
+vosp::logger::ParallelLogger logger{sink};
+
+logger.info(vosp::error::Error{
+    vosp::error::Category::NETWORK,
+    1002,
+    "Request completed"
+});
+
+if (!sink.flush()) {
+    // Handle destination stream failure.
+}
+```
+
+The default per-thread flush threshold is 64 KiB and may be supplied as the
+second constructor argument. Call `flush()` after producer threads have joined
+and before destroying the destination stream. Order is preserved within each
+producer thread; global order between producers is unspecified.
 
 Custom sinks implement `ILogSink`. `PolicyLogger` supports compile-time
 filtering, for example `MinimumLevelPolicy<Level::WARNING>`. A reference-based
@@ -320,7 +376,7 @@ MicroErrorSystem/build-bench/MicroErrorSystemBenchmark
 
 ```bash
 cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-asan \
-  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DBUILD_TESTING=ON \
   -DENABLE_SANITIZERS=ON
 cmake --build MicroErrorSystem/build-asan --parallel
@@ -389,14 +445,17 @@ The following results were collected from a local Release build on:
 - AMD Ryzen 7 PRO 1700X, 8 physical cores / 16 logical processors;
 - 31.95 GiB RAM;
 - Clang 22.1.6;
-- benchmark date: 2026-08-17.
+- benchmark date: 2026-08-18.
 
 Native API workload:
 
 ```text
-single operations=100000 elapsed_us=27530 operations_per_second=3.6324e+06
-multi workers=3 operations=99999 elapsed_us=22059 operations_per_second=4.53325e+06
-async operations=1000 elapsed_us=4087 operations_per_second=244678
+single operations=100000 median_operations_per_second=4.62022e+06
+multi workers=3 operations=99999 median_operations_per_second=5.89096e+06
+async operations=1000 median_operations_per_second=923361
+worker_pool workers=4 tasks=100000 median_tasks_per_second=514838
+worker_dispatch workers=4 tasks=100000 median_tasks_per_second=3.01123e+06
+worker_bulk_dispatch workers=4 tasks=100000 median_tasks_per_second=3.44851e+06
 ```
 
 External integration workload using the official `nlohmann/json` repository,
@@ -404,41 +463,14 @@ pinned to `v3.12.0`:
 
 ```text
 external_repo=nlohmann/json@v3.12.0 documents=20000 malformed=6667
-parse_only elapsed_us=178771 operations_per_second=111875
-parse_and_error_control workers=4 elapsed_us=89050 operations_per_second=224593
-```
-
-A later verification run on the same machine produced:
-
-```text
-parse_only elapsed_us=265600 operations_per_second=75301.2
-parse_and_error_control workers=4 elapsed_us=83821 operations_per_second=238604
+parse_only documents=20000 median_operations_per_second=108873
+parse_and_error_control workers=4 documents=20000 median_operations_per_second=311158
 ```
 
 These are reproducible local measurements, not performance guarantees. Results
 depend on CPU frequency policy, compiler, build mode, dependency version,
 workload composition, and background processes. Full methodology is available
 in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
-
-### Baseline comparison
-
-The repository also compares the public `MemoryRegister` path with a raw
-`std::unordered_set<Error, ErrorHash>` baseline using the same 100,000-insert
-workload. One additional Release run produced:
-
-```text
-raw_unordered_set operations_per_second=4.85437e+06
-memory_register operations=100000 operations_per_second=4.97711e+06
-raw_mutex_sets operations_per_second=8.09512e+06
-memory_register_parallel operations_per_second=1.30309e+07
-```
-
-The baseline is intentionally low-level and does not provide category
-validation, capacity errors, `Result` propagation, routing, or lifecycle
-contracts. The numbers therefore describe overhead under this workload; they
-do not establish that the framework is universally faster than a raw container.
-Run it with `-DBUILD_BENCHMARKS=ON` using the
-`MicroErrorSystemComparisonBenchmark` target.
 
 ### External HTTP integration workload
 
@@ -487,12 +519,15 @@ The local workload set currently contains shallow clones of:
 | [`nlohmann/json`](https://github.com/nlohmann/json) | `v3.12.0` | malformed-input classification and JSON parsing |
 | [`fmtlib/fmt`](https://github.com/fmtlib/fmt) | `11.2.0` | high-throughput formatting and log-message generation |
 | [`yhirose/cpp-httplib`](https://github.com/yhirose/cpp-httplib) | `v0.18.0` | concurrent request/error-path workload |
-| [`gabime/spdlog`](https://github.com/gabime/spdlog) | `v1.15.3` | logger throughput comparison |
+| [`gabime/spdlog`](https://github.com/gabime/spdlog) | `v1.15.3` | optional logger workload validation |
+| [`bshoshany/thread-pool`](https://github.com/bshoshany/thread-pool) | `v5.1.0` | optional worker-pool workload validation |
+| [`taskflow/taskflow`](https://github.com/taskflow/taskflow) | `v4.1.0` | optional executor workload validation |
 
 The `nlohmann/json` workload is wired into the external CMake stress target.
 The `fmt` and `cpp-httplib` repositories are wired into an opt-in local HTTP
-integration target. Their source trees are ignored by Git and are not shipped
-as runtime dependencies.
+integration target. BS::thread_pool and Taskflow are used only by the local
+worker-pool comparison target. Their source trees are ignored by Git and are
+not shipped as runtime dependencies.
 
 ## Verification status
 
@@ -527,9 +562,21 @@ MicroErrorSystem/
 └── .github/workflows/ci.yml
 ```
 
+## Versioning
+
+The current release is **`0.1.0-beta`**. The numeric API version follows this
+project policy:
+
+- `x.0.0` — a complete system redesign or stable generation release;
+- `0.x.0` — a major feature update while the API is still pre-1.0;
+- `0.0.x` — a backward-compatible patch or bug fix.
+
+The `-beta` suffix marks a prerelease whose API can still change before the
+first stable generation.
+
 ## Current limitations
 
-- The API is version `0.1.0` and may evolve before `1.0.0`.
+- The API is version `0.1.0-beta` and may evolve before `1.0.0`.
 - Registers are non-owning; logger sinks are either non-owning references or
   logger-owned `std::shared_ptr` instances.
 - A running worker task cannot be forcefully interrupted safely.

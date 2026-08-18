@@ -10,16 +10,20 @@
 - compiler: Clang 22.1.6;
 - build mode: Release;
 - workload: 100,000 unique inserts;
-- date: 2026-08-17.
+- date: 2026-08-18.
 
 ## Result
 
-One local Release run produced the following native results:
+One warm-up process was excluded, followed by seven independent Release
+processes. The table reports medians:
 
 ```text
-single operations=100000 elapsed_us=27530 operations_per_second=3.6324e+06
-multi workers=3 operations=99999 elapsed_us=22059 operations_per_second=4.53325e+06
-async operations=1000 elapsed_us=4087 operations_per_second=244678
+single operations=100000 median_operations_per_second=4.62022e+06
+multi workers=3 operations=99999 median_operations_per_second=5.89096e+06
+async operations=1000 median_operations_per_second=923361
+worker_pool workers=4 tasks=100000 median_tasks_per_second=514838
+worker_dispatch workers=4 tasks=100000 median_tasks_per_second=3.01123e+06
+worker_bulk_dispatch workers=4 tasks=100000 median_tasks_per_second=3.44851e+06
 ```
 
 The multi-threaded run uses three independent categories, so each worker targets
@@ -29,9 +33,31 @@ hidden: operations targeting the same register are serialized for correctness.
 The async measurement uses `IndustrialWorkerPool` with three bounded workers.
 It avoids creating one operating-system thread per submitted task.
 
-This is an indicative local measurement, not a stable performance guarantee.
-For comparable results, use the same compiler, build type, CPU frequency policy,
-and workload. Run the benchmark with:
+### Worker pool modes
+
+A dedicated workload submits 100,000 trivial `OperationResult` tasks to four
+workers through a queue with 1,024 slots. Values are medians of seven Release
+launches on 2026-08-18:
+
+| Feature | Throughput |
+| --- | ---: |
+| Tracked `submit()`, preallocated ring queue | **514,838 tasks/s** |
+| Fire-and-forget `dispatch()`, preallocated ring queue | **3.01123M tasks/s** |
+| Grouped `dispatch_bulk()`, preallocated ring queue | **3.44851M tasks/s** |
+
+Tracked submission returns a future and typed result. Fire-and-forget dispatch
+avoids promise/future shared state. The bulk timed region includes creation of
+the callback vector, grouped submission, bounded backpressure, execution,
+draining, and worker joins. Task bodies intentionally do no application work,
+making executor overhead the dominant cost. Tracked, scalar dispatch, and bulk
+dispatch are separate API contracts.
+
+The worker-pool measurements cover three distinct public features: tracked
+tasks returning typed results, fire-and-forget dispatch, and grouped bulk
+submission. The configured run uses four workers, a 1,024-task bounded queue,
+blocking backpressure, and 100,000 atomic-increment tasks.
+
+Run the native benchmark with:
 
 ```text
 cmake -S MicroErrorSystem -B build -DBUILD_BENCHMARKS=ON
@@ -48,8 +74,8 @@ pinned to tag `v3.12.0` (commit `65ee68451d8eb2b5f3a30b410476ab83deb3289b`).
 The workload contains 20,000 JSON documents, including 6,667 malformed inputs:
 
 ```text
-parse_only elapsed_us=178771 operations_per_second=111875
-parse_and_error_control workers=4 elapsed_us=89050 operations_per_second=224593
+parse_only documents=20000 median_operations_per_second=108873
+parse_and_error_control workers=4 documents=20000 median_operations_per_second=311158
 ```
 
 This validates the error-control contour around a real third-party parser. It is
@@ -64,49 +90,46 @@ registration and synchronization according to the selected test case.
 - Clang AddressSanitizer + UndefinedBehaviorSanitizer: 3/3 native tests passed;
 - extended Clang warnings and C++23 syntax checks completed without errors.
 
-## Baseline comparison
+## Logger and sink throughput
 
-The comparison target measures the framework against raw standard-library
-containers under the same 100,000-unique-insert workload:
+The logger benchmark covers owned-record dispatch, formatting, shared sinks,
+sharded sinks, and buffered stream output. Each logger row processes 3,000,000
+records. Values are medians from seven Release launches after one excluded
+warm-up process. Multi-worker timers start after every worker reaches a latch.
 
-```text
-raw_unordered_set operations_per_second=4.85437e+06
-memory_register operations=100000 operations_per_second=4.97711e+06
-raw_mutex_sets operations_per_second=8.09512e+06
-memory_register_parallel operations_per_second=1.30309e+07
-```
+| Logger feature | Workload | Throughput |
+| --- | --- | ---: |
+| Prepared dispatch | 1 thread | 20.6567M/s |
+| Shared-sink dispatch | 4 workers | 17.6403M/s |
+| Sharded dispatch | 4 workers | **71.1305M/s** |
+| One sink per worker | 4 workers | 68.4916M/s |
+| Owned-record formatting | 1 thread | 5.75945M/s |
+| Owned-record formatting | 4 workers | 10.3093M/s |
 
-The raw baseline intentionally omits category validation, capacity handling,
-error propagation, routing, and lifecycle semantics. It is an overhead
-reference, not an apples-to-apples replacement for the framework API.
+The sharded path uses one thread-owned padded counter per producer and merges
+the counters after all workers join. It measures sink topology without changing
+the logger's owned-record contract.
 
-## Logger comparison with spdlog
+The benchmark also isolates the stream sinks with a stream buffer that accepts
+all bytes without terminal or filesystem I/O. Building a typical record in a
+512-byte stack buffer and issuing one stream write reached 17.0054M records/s.
+With four workers writing one shared stream, the immediate sink reached
+9.4665M/s. `BufferedStreamSink` reached 17.5995M/s with one producer and
+51.6983M/s with four producers, including the final `flush()`. Its thread-local
+buffers reduce output-lock acquisitions while preserving per-producer order.
+Formatting happens before the stream mutex is acquired. Long messages use the
+same owned thread buffer without a temporary formatted record.
 
-The logger component was compared with `spdlog v1.15.3` using its in-memory
-`null_sink`, 1,000,000 formatted records, and a four-worker workload. The values
-below are medians from five release launches on the documented Windows host:
+| Stream sink workload | Throughput |
+| --- | ---: |
+| Immediate `ConsoleSink`, 1 thread | 17.0054M/s |
+| Immediate shared `ConsoleSink`, 4 workers | 9.4665M/s |
+| `BufferedStreamSink`, 1 thread | 17.5995M/s |
+| `BufferedStreamSink`, 4 workers | **51.6983M/s** |
 
-```text
-micro_single records=1000000 elapsed_us=249524 records_per_second=4.00763e+06
-spdlog_single records=1000000 elapsed_us=64981 records_per_second=1.53891e+07
-micro_multi records=1000000 elapsed_us=450967 records_per_second=2.21746e+06
-micro_parallel_multi records=1000000 elapsed_us=97560 records_per_second=1.02501e+07
-policy_single records=1000000 elapsed_us=201868 records_per_second=4.95373e+06
-policy_multi records=1000000 elapsed_us=77185 records_per_second=1.29559e+07
-policy_async records=1000000 elapsed_us=219068 records_per_second=4.56479e+06
-spdlog_multi records=1000000 elapsed_us=21343 records_per_second=4.68538e+07
-```
-
-This is a narrow throughput comparison. `spdlog` uses a null sink, while
-MicroErrorSystem creates typed error/log-entry objects and invokes its sink
-callback contract. `Logger` serializes callbacks for generic sink safety;
-`ParallelLogger` is an explicit opt-in mode for sinks whose `write` methods are
-thread-safe. The common one-sink path avoids the registry mutex, and the same
-`PolicyLogger` can use `MinimalMetadataPolicy` to omit timestamp/thread-id
-capture. Its four-worker median was 12.9559M records/s. The bounded async mode
-delivered 4.56479M records/s end-to-end, including queueing and draining. The result does not
-invalidate the framework's error registration, routing, policy, or lifecycle
-features.
+The four-worker results have higher scheduler variance than the single-thread
+results. The benchmark validates record counts and equal formatted byte counts
+before reporting success. Results remain machine- and workload-dependent.
 
 ## Fuzzing
 

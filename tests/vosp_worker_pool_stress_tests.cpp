@@ -69,11 +69,41 @@ int main()
 
     pool.shutdown(vosp::async::ShutdownMode::DRAIN);
 
+    vosp::async::IndustrialWorkerPool dispatch_pool{4, 32};
+    std::atomic<std::size_t> dispatched = 0;
+    std::vector<std::jthread> dispatch_producers;
+    dispatch_producers.reserve(producer_count);
+    for (std::size_t producer = 0; producer < producer_count; ++producer)
+    {
+        dispatch_producers.emplace_back([&]
+        {
+            for (std::size_t task = 0; task < tasks_per_producer; ++task)
+            {
+                dispatch_pool.dispatch([&dispatched]() -> OperationResult
+                {
+                    dispatched.fetch_add(1, std::memory_order_relaxed);
+                    return {};
+                });
+            }
+        });
+    }
+    for (auto& producer : dispatch_producers)
+    {
+        producer.join();
+    }
+    dispatch_pool.shutdown(vosp::async::ShutdownMode::DRAIN);
+
     const bool passed =
         check(futures.size() == expected_tasks, "all tasks submitted") &&
         check(all_succeeded, "all stress tasks succeeded") &&
         check(executed.load(std::memory_order_relaxed) == expected_tasks,
               "all stress tasks executed") &&
-        check(pool.pending_tasks() == 0, "queue drained");
+        check(pool.pending_tasks() == 0, "queue drained") &&
+        check(dispatched.load(std::memory_order_relaxed) == expected_tasks,
+              "all fire-and-forget tasks executed") &&
+        check(dispatch_pool.failed_dispatches() == 0,
+              "fire-and-forget stress tasks succeeded") &&
+        check(dispatch_pool.pending_tasks() == 0,
+              "fire-and-forget queue drained");
     return passed ? 0 : 1;
 }

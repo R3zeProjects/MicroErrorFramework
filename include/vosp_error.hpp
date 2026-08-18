@@ -48,17 +48,8 @@ namespace vosp::error
         {
         }
 
-        /** @brief Returns true when both error values contain the same data. */
-        [[nodiscard]] bool operator==(const Error& rhs) const noexcept
-        {
-            return code_ == rhs.code_ && message_ == rhs.message_ && category_ == rhs.category_;
-        }
-
-        /** @brief Returns true when the error values differ. */
-        [[nodiscard]] bool operator!=(const Error& rhs) const noexcept
-        {
-            return !(*this == rhs);
-        }
+        /** @brief Compares all owned error fields; C++ also synthesizes operator!=. */
+        [[nodiscard]] bool operator==(const Error&) const noexcept = default;
 
         /** @brief Returns the stable application-specific error code. */
         [[nodiscard]] std::uint32_t code() const noexcept
@@ -126,8 +117,7 @@ namespace vosp::error
 
     namespace predefined
     {
-        /** @brief Builds a predefined error without failing static initialization. */
-        [[nodiscard]] inline Error make_safe(
+        [[nodiscard]] inline Error make(
             Category category,
             std::uint32_t code,
             std::string_view message) noexcept
@@ -138,16 +128,18 @@ namespace vosp::error
             }
             catch (...)
             {
-                // An empty string is normally SSO-backed and avoids another
-                // potentially failing allocation during startup recovery.
-                return Error{category, code, std::string{}};
+                return Error{category, code, {}};
             }
         }
 
-        inline const Error network_error = make_safe(Category::NETWORK, 1000, "Network error");
-        inline const Error database_error = make_safe(Category::DATABASE, 2000, "Database error");
-        inline const Error filesystem_error = make_safe(Category::FILESYSTEM, 3000, "Filesystem error");
-        inline const Error uncategorized_error = make_safe(Category::NONE, 0, "Uncategorized error");
+        [[maybe_unused]] inline const Error network_error =
+            make(Category::NETWORK, 1000, "Network error");
+        [[maybe_unused]] inline const Error database_error =
+            make(Category::DATABASE, 2000, "Database error");
+        [[maybe_unused]] inline const Error filesystem_error =
+            make(Category::FILESYSTEM, 3000, "Filesystem error");
+        [[maybe_unused]] inline const Error uncategorized_error =
+            make(Category::NONE, 0, "Uncategorized error");
     }
 
 
@@ -280,9 +272,7 @@ namespace vosp::error
                 });
             }
 
-            const auto it = errors_.find(error);
-
-            if (it == errors_.end())
+            if (errors_.erase(error) == 0)
             {
                 return std::unexpected(Error{
                     RegisterCategory,
@@ -291,7 +281,6 @@ namespace vosp::error
                 });
             }
 
-            errors_.erase(it);
             return {};
         }
 
@@ -335,130 +324,88 @@ namespace vosp::error
     template<typename Register>
     concept RegisterType = std::derived_from<std::remove_cvref_t<Register>, IRegister>;
 
-    /**
-     * @brief Routes an error to the first register with a matching category.
-     * @tparam Registers Concrete register implementations.
-     * @note The handler does not own the supplied register objects.
-     */
-    template<RegisterType... Registers>
-    class Handler
+    namespace detail
     {
-    public:
-        /**
-         * @brief Creates a non-owning dispatcher over the supplied registers.
-         * @param registers Register instances that must outlive this handler.
-         */
-        explicit Handler(Registers&... registers) noexcept
-            : registers_{std::ref(registers)...}
+        template<bool Synchronized, RegisterType... Registers>
+        class BasicHandler
         {
-        }
-
-        /**
-         * @brief Adds an error to the register matching its category.
-         * @param error Error to add.
-         * @return Empty result on success, or an Error describing the failure.
-         */
-        [[nodiscard]] OperationResult add(const Error& error)
-        {
-            return dispatch(error, false);
-        }
-
-        /**
-         * @brief Removes an error from the register matching its category.
-         * @param error Error to remove.
-         * @return Empty result on success, or an Error describing the failure.
-         */
-        [[nodiscard]] OperationResult remove(const Error& error)
-        {
-            return dispatch(error, true);
-        }
-
-    private:
-        [[nodiscard]] OperationResult dispatch(const Error& error, bool remove_error)
-        {
-            for (const auto& register_reference : registers_)
+        public:
+            explicit BasicHandler(Registers&... registers) noexcept
+                : registers_{std::ref(registers)...}
             {
-                IRegister& register_instance = register_reference.get();
-
-                if (register_instance.category() != error.category())
-                {
-                    continue;
-                }
-
-                if (remove_error)
-                {
-                    return register_instance.remove(error);
-                }
-
-                return register_instance.add(error);
             }
 
-            return std::unexpected(Error{
-                error.category(),
-                missing_register_code,
-                "No register is configured for this category"
-            });
-        }
-
-        std::array<std::reference_wrapper<IRegister>, sizeof...(Registers)> registers_;
-    };
-
-    /**
-     * @brief Category-level synchronized dispatcher.
-     *
-     * Each register has an independent mutex, so operations targeting
-     * different categories can proceed concurrently.
-     */
-    template<RegisterType... Registers>
-    class ConcurrentHandler
-    {
-    public:
-        explicit ConcurrentHandler(Registers&... registers) noexcept
-            : registers_{std::ref(registers)...}
-        {
-        }
-
-        [[nodiscard]] OperationResult add(const Error& error)
-        {
-            return dispatch(error, false);
-        }
-
-        [[nodiscard]] OperationResult remove(const Error& error)
-        {
-            return dispatch(error, true);
-        }
-
-    private:
-        [[nodiscard]] OperationResult dispatch(const Error& error, bool remove_error)
-        {
-            for (std::size_t index = 0; index < registers_.size(); ++index)
+            [[nodiscard]] OperationResult add(const Error& error)
             {
-                IRegister& register_instance = registers_[index].get();
-
-                if (register_instance.category() != error.category())
-                {
-                    continue;
-                }
-
-                const std::lock_guard lock{mutexes_[index]};
-                if (remove_error)
-                {
-                    return register_instance.remove(error);
-                }
-
-                return register_instance.add(error);
+                return dispatch(error, &IRegister::add);
             }
 
-            return std::unexpected(Error{
-                error.category(),
-                missing_register_code,
-                "No register is configured for this category"
-            });
-        }
+            [[nodiscard]] OperationResult remove(const Error& error)
+            {
+                return dispatch(error, &IRegister::remove);
+            }
 
-        std::array<std::reference_wrapper<IRegister>, sizeof...(Registers)> registers_;
-        std::array<std::mutex, sizeof...(Registers)> mutexes_;
+        private:
+            using Operation = OperationResult (IRegister::*)(const Error&);
+
+            [[nodiscard]] OperationResult dispatch(const Error& error, Operation operation)
+            {
+                for (std::size_t index = 0; index < registers_.size(); ++index)
+                {
+                    IRegister& register_instance = registers_[index].get();
+                    if (register_instance.category() != error.category())
+                    {
+                        continue;
+                    }
+
+                    if constexpr (Synchronized)
+                    {
+                        const std::lock_guard lock{mutexes_[index]};
+                        return std::invoke(operation, register_instance, error);
+                    }
+                    else
+                    {
+                        return std::invoke(operation, register_instance, error);
+                    }
+                }
+
+                return std::unexpected(Error{
+                    error.category(),
+                    missing_register_code,
+                    "No register is configured for this category"
+                });
+            }
+
+            std::array<std::reference_wrapper<IRegister>, sizeof...(Registers)> registers_;
+            std::array<std::mutex, Synchronized ? sizeof...(Registers) : 0> mutexes_;
+        };
+    }
+
+    /** @brief Routes an error to the first register with a matching category. */
+    template<RegisterType... Registers>
+    class Handler final : public detail::BasicHandler<false, Registers...>
+    {
+        using Base = detail::BasicHandler<false, Registers...>;
+
+    public:
+        explicit Handler(Registers&... registers) noexcept : Base(registers...) {}
     };
+
+    template<RegisterType... Registers>
+    Handler(Registers&...) -> Handler<Registers...>;
+
+    /** @brief Routes errors with one independent lock per category register. */
+    template<RegisterType... Registers>
+    class ConcurrentHandler final : public detail::BasicHandler<true, Registers...>
+    {
+        using Base = detail::BasicHandler<true, Registers...>;
+
+    public:
+        explicit ConcurrentHandler(Registers&... registers) noexcept : Base(registers...) {}
+    };
+
+    template<RegisterType... Registers>
+    ConcurrentHandler(Registers&...) -> ConcurrentHandler<Registers...>;
 
     /**
      * @brief Selects a register implementation without synchronization.
@@ -527,64 +474,52 @@ namespace vosp::error
     template<typename TypeRegister, typename TypeHandler, RegisterType... Registers>
     class ErrorSystem;
 
-    /**
-     * @brief Synchronous error system without internal locking.
-     */
-    template<RegisterType... Registers>
-    class ErrorSystem<SingleThreadedRegister, SingleThreadedHandler, Registers...>
+    namespace detail
     {
+        template<typename HandlerType, RegisterType... Registers>
+        class SynchronousErrorSystem
+        {
+        public:
+            explicit SynchronousErrorSystem(Registers&... registers) noexcept
+                : handler_(registers...)
+            {
+            }
+
+            [[nodiscard]] OperationResult add(const Error& error)
+            {
+                return handler_.add(error);
+            }
+
+            [[nodiscard]] OperationResult remove(const Error& error)
+            {
+                return handler_.remove(error);
+            }
+
+        private:
+            HandlerType handler_;
+        };
+    }
+
+    /** @brief Synchronous error system without internal locking. */
+    template<RegisterType... Registers>
+    class ErrorSystem<SingleThreadedRegister, SingleThreadedHandler, Registers...> final
+        : public detail::SynchronousErrorSystem<Handler<Registers...>, Registers...>
+    {
+        using Base = detail::SynchronousErrorSystem<Handler<Registers...>, Registers...>;
+
     public:
-        /**
-         * @brief Creates a single-threaded system over existing registers.
-         * @param registers Registers that must outlive this system.
-         */
-        explicit ErrorSystem(Registers&... registers) noexcept
-            : handler_(registers...)
-        {
-        }
-
-        [[nodiscard]] OperationResult add(const Error& error)
-        {
-            return handler_.add(error);
-        }
-
-        [[nodiscard]] OperationResult remove(const Error& error)
-        {
-            return handler_.remove(error);
-        }
-
-    private:
-        Handler<Registers...> handler_;
+        using Base::Base;
     };
 
-    /**
-     * @brief Synchronous error system protected by one mutex.
-     */
+    /** @brief Synchronous error system with one independent lock per register. */
     template<RegisterType... Registers>
-    class ErrorSystem<MultiThreadedRegister, MultiThreadedHandler, Registers...>
+    class ErrorSystem<MultiThreadedRegister, MultiThreadedHandler, Registers...> final
+        : public detail::SynchronousErrorSystem<ConcurrentHandler<Registers...>, Registers...>
     {
+        using Base = detail::SynchronousErrorSystem<ConcurrentHandler<Registers...>, Registers...>;
+
     public:
-        /**
-         * @brief Creates a mutex-protected system over existing registers.
-         * @param registers Registers that must outlive this system.
-         */
-        explicit ErrorSystem(Registers&... registers) noexcept
-            : handler_(registers...)
-        {
-        }
-
-        [[nodiscard]] OperationResult add(const Error& error)
-        {
-            return handler_.add(error);
-        }
-
-        [[nodiscard]] OperationResult remove(const Error& error)
-        {
-            return handler_.remove(error);
-        }
-
-    private:
-        ConcurrentHandler<Registers...> handler_;
+        using Base::Base;
     };
 
     /**

@@ -5,6 +5,8 @@ project(MicroErrorSystem
     LANGUAGES CXX
 )
 
+set(MICRO_ERROR_SYSTEM_PRERELEASE "beta")
+
 include(CTest)
 
 option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
@@ -161,6 +163,36 @@ if(BUILD_LOCAL_LIBRARY_COMPARISONS)
         PRIVATE "${LocalSpdlogIncludeDir}"
     )
     enable_sanitizers(MicroErrorSystemSpdlogComparisonBenchmark)
+
+    set(LocalBsThreadPoolIncludeDir
+        "${LOCAL_EXTERNAL_WORKLOAD_ROOT}/BS-thread-pool/include"
+    )
+    set(LocalTaskflowIncludeDir
+        "${LOCAL_EXTERNAL_WORKLOAD_ROOT}/taskflow"
+    )
+    if(NOT EXISTS "${LocalBsThreadPoolIncludeDir}/BS_thread_pool.hpp")
+        message(FATAL_ERROR
+            "BS::thread_pool checkout not found under ${LOCAL_EXTERNAL_WORKLOAD_ROOT}"
+        )
+    endif()
+    if(NOT EXISTS "${LocalTaskflowIncludeDir}/taskflow/taskflow.hpp")
+        message(FATAL_ERROR
+            "Taskflow checkout not found under ${LOCAL_EXTERNAL_WORKLOAD_ROOT}"
+        )
+    endif()
+
+    add_executable(MicroErrorSystemWorkerPoolComparisonBenchmark
+        benchmarks/vosp_worker_pool_comparison_benchmark.cpp
+    )
+    target_link_libraries(MicroErrorSystemWorkerPoolComparisonBenchmark
+        PRIVATE MicroErrorSystemHeaders
+    )
+    target_include_directories(MicroErrorSystemWorkerPoolComparisonBenchmark
+        PRIVATE
+            "${LocalBsThreadPoolIncludeDir}"
+            "${LocalTaskflowIncludeDir}"
+    )
+    enable_sanitizers(MicroErrorSystemWorkerPoolComparisonBenchmark)
 endif()
 
 if(BUILD_TESTING)

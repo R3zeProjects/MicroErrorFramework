@@ -1,5 +1,6 @@
 #include <vosp.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <iostream>
 #include <memory>
@@ -105,11 +106,122 @@ namespace
         ConsoleSink sink{output};
         Logger logger{sink};
 
+        const std::string long_message(1024, 'x');
+        std::ostringstream long_output;
+        ConsoleSink long_sink{long_output};
+        Logger long_logger{long_sink};
+
+        std::ostringstream failed_output;
+        failed_output.setstate(std::ios::badbit);
+        ConsoleSink failed_sink{failed_output};
+        Logger failed_logger{failed_sink};
+
         return check(logger.error(Error{Category::FILESYSTEM, 3001, "disk full"}),
                      "console sink write") &&
                check(output.str() ==
                          "[ERROR] [FILESYSTEM] code=3001 message=disk full\n",
-                     "console sink format");
+                     "console sink format") &&
+               check(long_logger.info(Error{Category::NETWORK, 3002, long_message}),
+                     "console sink long write") &&
+               check(long_output.str() ==
+                         "[INFO] [NETWORK] code=3002 message=" + long_message + "\n",
+                     "console sink long format") &&
+               check(!failed_logger.error(Error{Category::FILESYSTEM, 3003, "failure"}),
+                     "console sink reports stream failure");
+    }
+
+    /** @brief Verifies buffered delivery, concurrent producers, and flush errors. */
+    bool test_buffered_stream_sink()
+    {
+        std::ostringstream output;
+        BufferedStreamSink sink{output, 4096};
+        ParallelLogger logger{sink};
+
+        if (!check(logger.info(Error{Category::NETWORK, 3100, "buffered"}),
+                   "buffered sink accepts record") ||
+            !check(output.str().empty(), "buffered sink delays stream output") ||
+            !check(sink.flush(), "buffered sink flush") ||
+            !check(output.str() == "[INFO] [NETWORK] code=3100 message=buffered\n",
+                   "buffered sink format") ||
+            !check(sink.flush_threshold() == 4096, "buffered sink threshold"))
+        {
+            return false;
+        }
+
+        constexpr std::size_t worker_count = 4;
+        constexpr std::size_t records_per_worker = 128;
+        std::ostringstream concurrent_output;
+        BufferedStreamSink concurrent_sink{concurrent_output, 256};
+        ParallelLogger concurrent_logger{concurrent_sink};
+        std::vector<std::jthread> workers;
+        workers.reserve(worker_count);
+        for (std::size_t worker = 0; worker < worker_count; ++worker)
+        {
+            workers.emplace_back([&concurrent_logger, worker]
+            {
+                for (std::size_t record = 0; record < records_per_worker; ++record)
+                {
+                    static_cast<void>(concurrent_logger.info(Error{
+                        Category::NETWORK,
+                        static_cast<std::uint32_t>(worker * records_per_worker + record),
+                        "parallel buffered"}));
+                }
+            });
+        }
+        workers.clear();
+
+        if (!check(concurrent_sink.flush(), "concurrent buffered flush"))
+        {
+            return false;
+        }
+        const auto text = concurrent_output.str();
+        if (!check(
+                static_cast<std::size_t>(std::count(text.begin(), text.end(), '\n')) ==
+                    worker_count * records_per_worker,
+                "concurrent buffered record count"))
+        {
+            return false;
+        }
+
+        std::ostringstream failed_output;
+        BufferedStreamSink failed_sink{failed_output};
+        ParallelLogger failed_logger{failed_sink};
+        if (!check(failed_logger.error(Error{Category::FILESYSTEM, 3101, "failure"}),
+                   "failed buffered stream accepts record"))
+        {
+            return false;
+        }
+        failed_output.setstate(std::ios::badbit);
+        if (!check(!failed_sink.flush(), "buffered sink reports flush failure"))
+        {
+            return false;
+        }
+
+        for (std::uint32_t iteration = 0; iteration < 16; ++iteration)
+        {
+            std::ostringstream lifecycle_output;
+            BufferedStreamSink lifecycle_sink{lifecycle_output};
+            ParallelLogger lifecycle_logger{lifecycle_sink};
+            if (!check(
+                    lifecycle_logger.info(
+                        Error{Category::NETWORK, iteration, "short-lived sink"}) &&
+                        lifecycle_sink.flush(),
+                    "buffered sink repeated lifecycle"))
+            {
+                return false;
+            }
+        }
+
+        try
+        {
+            BufferedStreamSink invalid_sink{output, 0};
+            static_cast<void>(invalid_sink);
+        }
+        catch (const std::invalid_argument&)
+        {
+            return true;
+        }
+        return check(false, "buffered sink rejects zero threshold");
     }
 
     /** @brief Verifies compile-time logger filtering policy. */
@@ -270,6 +382,7 @@ int main()
     return test_string_conversion() &&
            test_logger_lifecycle() &&
            test_console_sink() &&
+           test_buffered_stream_sink() &&
            test_logger_policy() &&
            test_minimal_metadata_policy() &&
            test_reentrant_sink() &&

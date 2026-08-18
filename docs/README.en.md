@@ -12,7 +12,8 @@ operations that need to return either a value or an error.
 - `Handler`: category-based error routing;
 - `Result<T>`: an alias for `std::expected<T, Error>`;
 - predefined errors in `vosp::error::predefined`;
-- thread-safe `ILogger`, `Logger`, `PolicyLogger`, `ILogSink`, and `ConsoleSink` components;
+- thread-safe `ILogger`, `Logger`, `PolicyLogger`, `ILogSink`, `ConsoleSink`, and
+  `BufferedStreamSink` components;
 - bounded `IndustrialWorkerPool` with 1024 worker/queue limits, backpressure,
   and queued-task cancellation.
 
@@ -185,13 +186,24 @@ using Async = AsyncSystem<decltype(pool), NetworkRegister>;
 Async system{pool, network};
 std::future<OperationResult> task = system.add(error);
 OperationResult result = task.get();
+
+pool.dispatch([]() -> OperationResult {
+    return {};
+});
 ```
 
-The pool reuses fixed workers. Its queue is bounded to 1024 tasks; `submit()`
-waits for capacity, and `clear_queue()` completes pending futures with a
-cancellation error. Running functions are not forcefully interrupted.
-For cooperative cancellation, use `submit_cancellable()` and check the
-provided `std::stop_token` inside the task.
+The pool reuses fixed workers and preallocated ring-buffer queue slots. Its
+queue is bounded to 1024 tasks; `submit()` waits for capacity, and
+`clear_queue()` completes pending futures with a cancellation error.
+`ShutdownMode::DRAIN` executes accepted work without requesting cancellation.
+`CANCEL_PENDING` cancels queued work and requests cooperative cancellation from
+active tasks. Running functions are not forcefully interrupted, so callbacks
+submitted through `submit_cancellable()` must check their `std::stop_token`.
+For work that does not need a future, `dispatch()` avoids promise/future shared
+state allocation. `failed_dispatches()` and `cancelled_dispatches()` preserve
+operational visibility for that faster path.
+`dispatch_bulk(std::span<Task>)` is the throughput-oriented form: it consumes
+callbacks in grouped queue refills and returns the exact accepted count.
 `MemoryRegister` also accepts a per-instance `capacity_limit`, bounded by the
 global `max_register_capacity`.
 
@@ -233,7 +245,7 @@ The logger is separate from registers: registers own error storage, while the
 logger publishes events to connected sinks.
 
 ```cpp
-#include "vosp_logger.hpp"
+#include <vosp.hpp>
 #include <iostream>
 
 using namespace vosp::logger;
@@ -251,6 +263,23 @@ Output:
 [ERROR] [NETWORK] code=1001 message=Connection refused
 ```
 
+`ConsoleSink` writes every record immediately. For a shared stream with several
+producer threads, use the buffered sink without changing the logging calls:
+
+```cpp
+BufferedStreamSink sink{std::cout};
+ParallelLogger logger{sink};
+
+logger.info(Error{Category::NETWORK, 1002, "Request completed"});
+if (!sink.flush()) {
+    // Handle destination stream failure.
+}
+```
+
+`BufferedStreamSink` uses a 64 KiB buffer per producer by default. The threshold
+is an optional second constructor argument. Flush after producers have joined.
+Per-producer order is preserved; cross-producer order is unspecified.
+
 Implement a custom sink by overriding `ILogSink::write()`. A reference-based
 sink must outlive the logger. To transfer safe lifetime management to the
 logger, pass `std::shared_ptr<ILogSink>` to its constructor or `attach()`;
@@ -266,6 +295,16 @@ avoids callback serialization, and omits timestamp/thread-id capture.
 `PolicyLogger`. It owns queued `Error` values, applies blocking backpressure at
 1,024 pending records, drains batches on one worker, and provides `flush()` plus
 `failed_records()` for lifecycle and sink-failure control.
+
+## C++23 simplification notes
+
+The documented API calls remain unchanged after the simplification pass. The
+three implementation headers were reduced from 2,184 to 2,072 lines. Shared
+internal cores now implement synchronous systems and handlers, `operator!=` is
+synthesized from `Error::operator==`, logger level methods use constrained
+perfect forwarding, and buffered sink shards use stable `std::deque` storage.
+The worker hot path deliberately keeps an explicit two-variant branch because
+local benchmarks showed it optimizing better than `std::visit` on Clang 22.
 
 ## Predefined errors
 

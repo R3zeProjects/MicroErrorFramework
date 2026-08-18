@@ -1,6 +1,7 @@
 #include <vosp.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <future>
 #include <iostream>
@@ -259,6 +260,21 @@ namespace
             return false;
         }
 
+        bool queue_limit_checked = false;
+        try
+        {
+            IndustrialWorkerPool invalid_queue{1, vosp::async::max_queue_capacity + 1};
+        }
+        catch (const std::invalid_argument&)
+        {
+            queue_limit_checked = true;
+        }
+
+        if (!check(queue_limit_checked, "worker queue capacity limit"))
+        {
+            return false;
+        }
+
         IndustrialWorkerPool pool{2};
         MemoryRegister<Category::FILESYSTEM> register_instance{8};
         AsyncSystem<decltype(pool), decltype(register_instance)> system{
@@ -344,6 +360,123 @@ namespace
                      "cooperative cancellation") &&
                check(cooperative_result.error().category() == Category::NONE,
                      "cooperative cancellation category"))
+        {
+            return false;
+        }
+
+        IndustrialWorkerPool drain_pool{1, 2};
+        std::future<OperationResult> drained_one = drain_pool.submit_cancellable(
+            [](std::stop_token stop_token) -> OperationResult
+            {
+                if (stop_token.stop_requested())
+                {
+                    return std::unexpected(vosp::async::task_cancelled_error());
+                }
+                return {};
+            });
+        std::future<OperationResult> drained_two = drain_pool.submit_cancellable(
+            [](std::stop_token stop_token) -> OperationResult
+            {
+                if (stop_token.stop_requested())
+                {
+                    return std::unexpected(vosp::async::task_cancelled_error());
+                }
+                return {};
+            });
+        drain_pool.shutdown(ShutdownMode::DRAIN);
+
+        if (!check(drained_one.get().has_value(), "drain keeps first task running") ||
+            !check(drained_two.get().has_value(), "drain keeps queued task running") ||
+            !check(drain_pool.pending_tasks() == 0, "drain empties queue") ||
+            !check(drain_pool.active_tasks() == 0, "drain finishes active tasks"))
+        {
+            return false;
+        }
+
+        IndustrialWorkerPool dispatch_pool{2, 16};
+        std::atomic<std::size_t> dispatched = 0;
+        for (std::size_t index = 0; index < 64; ++index)
+        {
+            dispatch_pool.dispatch([&dispatched]() -> OperationResult
+            {
+                dispatched.fetch_add(1, std::memory_order_relaxed);
+                return {};
+            });
+        }
+        dispatch_pool.dispatch([]() -> OperationResult
+        {
+            return std::unexpected(Error{Category::NONE, 9002, "dispatch failure"});
+        });
+        dispatch_pool.dispatch([]() -> OperationResult
+        {
+            throw std::runtime_error("dispatch exception");
+        });
+        dispatch_pool.shutdown(ShutdownMode::DRAIN);
+
+        if (!check(dispatched.load(std::memory_order_relaxed) == 64,
+                   "fire-and-forget tasks execute") ||
+            !check(dispatch_pool.failed_dispatches() == 2,
+                   "fire-and-forget failures are counted") ||
+            !check(dispatch_pool.cancelled_dispatches() == 0,
+                   "drained dispatches are not cancelled"))
+        {
+            return false;
+        }
+
+        IndustrialWorkerPool bulk_pool{2, 16};
+        std::atomic<std::size_t> bulk_executed = 0;
+        std::vector<IndustrialWorkerPool::Task> bulk_tasks;
+        bulk_tasks.reserve(64);
+        for (std::size_t index = 0; index < 64; ++index)
+        {
+            bulk_tasks.emplace_back([&bulk_executed]() -> OperationResult
+            {
+                bulk_executed.fetch_add(1, std::memory_order_relaxed);
+                return {};
+            });
+        }
+        const auto bulk_accepted = bulk_pool.dispatch_bulk(bulk_tasks);
+        bulk_pool.wait();
+        const auto bulk_completed_before_shutdown =
+            bulk_executed.load(std::memory_order_relaxed);
+        bulk_pool.shutdown(ShutdownMode::DRAIN);
+
+        std::vector<IndustrialWorkerPool::Task> rejected_bulk;
+        rejected_bulk.emplace_back([]() -> OperationResult { return {}; });
+        const auto accepted_after_shutdown = bulk_pool.dispatch_bulk(rejected_bulk);
+        if (!check(bulk_accepted == 64, "bulk dispatch accepts complete batch") ||
+            !check(bulk_executed.load(std::memory_order_relaxed) == 64,
+                   "bulk dispatch executes complete batch") ||
+            !check(bulk_completed_before_shutdown == 64,
+                   "wait observes completed bulk queue") ||
+            !check(accepted_after_shutdown == 0,
+                   "bulk dispatch reports shutdown without partial acceptance") ||
+            !check(static_cast<bool>(rejected_bulk.front()),
+                   "bulk dispatch preserves unaccepted callback"))
+        {
+            return false;
+        }
+
+        IndustrialWorkerPool dispatch_cancel_pool{1, 2};
+        std::promise<void> release_dispatch;
+        auto dispatch_release_signal = release_dispatch.get_future().share();
+        auto dispatch_blocker = dispatch_cancel_pool.submit(
+            [dispatch_release_signal]() -> OperationResult
+            {
+                dispatch_release_signal.wait();
+                return {};
+            });
+        dispatch_cancel_pool.dispatch([]() -> OperationResult { return {}; });
+        dispatch_cancel_pool.dispatch([]() -> OperationResult { return {}; });
+        const auto cleared_dispatches = dispatch_cancel_pool.clear_queue();
+        release_dispatch.set_value();
+        const auto dispatch_blocker_result = dispatch_blocker.get();
+        dispatch_cancel_pool.shutdown(ShutdownMode::CANCEL_PENDING);
+
+        if (!check(dispatch_blocker_result.has_value(), "dispatch blocker completes") ||
+            !check(cleared_dispatches == 2, "queued dispatches are cleared") ||
+            !check(dispatch_cancel_pool.cancelled_dispatches() == 2,
+                   "cancelled dispatches are counted"))
         {
             return false;
         }

@@ -3,7 +3,9 @@
 #include "vosp_error.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <condition_variable>
 #include <concepts>
@@ -11,10 +13,12 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
-#include <iomanip>
+#include <limits>
 #include <mutex>
 #include <memory>
 #include <ostream>
+#include <stdexcept>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <type_traits>
@@ -60,7 +64,7 @@ namespace vosp::logger
     };
 
     /** @brief Dispatches sink callbacks one at a time for generic sink safety. */
-    struct SerializedSinkDispatch
+    struct [[maybe_unused]] SerializedSinkDispatch
     {
         static constexpr bool serializes_callbacks = true;
     };
@@ -89,7 +93,7 @@ namespace vosp::logger
     };
 
     /** @brief Captures timestamp and thread id for every record. */
-    struct FullMetadataPolicy
+    struct [[maybe_unused]] FullMetadataPolicy
     {
         [[nodiscard]] static std::chrono::system_clock::time_point timestamp() noexcept
         {
@@ -98,7 +102,10 @@ namespace vosp::logger
 
         [[nodiscard]] static std::thread::id thread_id() noexcept
         {
-            return std::this_thread::get_id();
+            // A native thread keeps one id for its lifetime; caching avoids a
+            // platform query on every full-metadata record.
+            thread_local const auto id = std::this_thread::get_id();
+            return id;
         }
     };
 
@@ -158,9 +165,9 @@ namespace vosp::logger
      */
     struct LogEntry
     {
-        std::chrono::system_clock::time_point timestamp;
-        std::thread::id thread_id;
-        Level level;
+        std::chrono::system_clock::time_point timestamp{};
+        std::thread::id thread_id{};
+        Level level = Level::INFO;
         Error error;
     };
 
@@ -185,6 +192,9 @@ namespace vosp::logger
     template<typename Sink>
     concept SinkType = std::derived_from<std::remove_cvref_t<Sink>, ILogSink>;
 
+    template<typename Value>
+    concept ErrorArgument = std::same_as<std::remove_cvref_t<Value>, Error>;
+
     /**
      * @brief Abstract logging service.
      */
@@ -200,76 +210,73 @@ namespace vosp::logger
         /** @brief Publishes a record at an explicit level. */
         [[nodiscard]] virtual bool write(Level level, const Error& error) = 0;
 
-        [[nodiscard]] bool trace(const Error& error)
+        /** @brief Publishes a TRACE record. */
+        template<ErrorArgument ErrorValue>
+        [[nodiscard]] bool trace(ErrorValue&& error)
         {
-            return write(Level::TRACE, error);
+            return publish(Level::TRACE, std::forward<ErrorValue>(error));
         }
 
-        [[nodiscard]] bool trace(Error&& error)
+        /** @brief Publishes a DEBUG record. */
+        template<ErrorArgument ErrorValue>
+        [[nodiscard]] bool debug(ErrorValue&& error)
         {
-            return write_owned(Level::TRACE, std::move(error));
+            return publish(Level::DEBUG, std::forward<ErrorValue>(error));
         }
 
-        [[nodiscard]] bool debug(const Error& error)
+        /** @brief Publishes an INFO record. */
+        template<ErrorArgument ErrorValue>
+        [[nodiscard]] bool info(ErrorValue&& error)
         {
-            return write(Level::DEBUG, error);
+            return publish(Level::INFO, std::forward<ErrorValue>(error));
         }
 
-        [[nodiscard]] bool debug(Error&& error)
+        /** @brief Publishes a WARNING record. */
+        template<ErrorArgument ErrorValue>
+        [[nodiscard]] bool warning(ErrorValue&& error)
         {
-            return write_owned(Level::DEBUG, std::move(error));
+            return publish(Level::WARNING, std::forward<ErrorValue>(error));
         }
 
-        [[nodiscard]] bool info(const Error& error)
+        /** @brief Publishes an ERROR record. */
+        template<ErrorArgument ErrorValue>
+        [[nodiscard]] bool error(ErrorValue&& error_value)
         {
-            return write(Level::INFO, error);
+            return publish(Level::ERROR, std::forward<ErrorValue>(error_value));
         }
 
-        [[nodiscard]] bool info(Error&& error)
+        /** @brief Publishes a CRITICAL record. */
+        template<ErrorArgument ErrorValue>
+        [[nodiscard]] bool critical(ErrorValue&& error)
         {
-            return write_owned(Level::INFO, std::move(error));
-        }
-
-        [[nodiscard]] bool warning(const Error& error)
-        {
-            return write(Level::WARNING, error);
-        }
-
-        [[nodiscard]] bool warning(Error&& error)
-        {
-            return write_owned(Level::WARNING, std::move(error));
-        }
-
-        [[nodiscard]] bool error(const Error& error_value)
-        {
-            return write(Level::ERROR, error_value);
-        }
-
-        [[nodiscard]] bool error(Error&& error_value)
-        {
-            return write_owned(Level::ERROR, std::move(error_value));
-        }
-
-        [[nodiscard]] bool critical(const Error& error)
-        {
-            return write(Level::CRITICAL, error);
-        }
-
-        [[nodiscard]] bool critical(Error&& error)
-        {
-            return write_owned(Level::CRITICAL, std::move(error));
+            return publish(Level::CRITICAL, std::forward<ErrorValue>(error));
         }
 
         /**
          * @brief Publishes an owned error without forcing a second message copy.
          * @note The default keeps compatibility for custom ILogger types.
          */
-        [[nodiscard]] virtual bool write_owned(Level level, Error error)
+        [[nodiscard]] virtual bool write_owned(Level level, Error&& error)
         {
             return write(level, error);
         }
 
         virtual ~ILogger() noexcept = default;
+
+    private:
+        template<typename ErrorValue>
+        [[nodiscard]] bool publish(Level level, ErrorValue&& error)
+        {
+            if constexpr (std::is_lvalue_reference_v<ErrorValue>)
+            {
+                return write(level, error);
+            }
+            else
+            {
+                return write_owned(level, std::forward<ErrorValue>(error));
+            }
+        }
+
     };
 
     /**
@@ -283,8 +290,8 @@ namespace vosp::logger
     private:
         struct SinkSlot
         {
-            ILogSink* sink;
-            std::shared_ptr<ILogSink> owner;
+            ILogSink* sink = nullptr;
+            std::shared_ptr<ILogSink> owner{};
         };
 
     public:
@@ -317,19 +324,7 @@ namespace vosp::logger
          */
         [[nodiscard]] bool attach(ILogSink& sink) override
         {
-            const std::lock_guard lock{mutex_};
-
-            for (const auto& registered_sink : sinks_)
-            {
-                if (registered_sink.sink == &sink)
-                {
-                    return false;
-                }
-            }
-
-            sinks_.push_back(SinkSlot{&sink, {}});
-            refresh_single_sink_fast_path();
-            return true;
+            return attach_slot(SinkSlot{&sink, {}});
         }
 
         /**
@@ -344,19 +339,8 @@ namespace vosp::logger
                 return false;
             }
 
-            const std::lock_guard lock{mutex_};
             auto* const raw_sink = sink.get();
-            for (const auto& registered_sink : sinks_)
-            {
-                if (registered_sink.sink == raw_sink)
-                {
-                    return false;
-                }
-            }
-
-            sinks_.push_back(SinkSlot{raw_sink, std::move(sink)});
-            refresh_single_sink_fast_path();
-            return true;
+            return attach_slot(SinkSlot{raw_sink, std::move(sink)});
         }
 
         /**
@@ -368,29 +352,18 @@ namespace vosp::logger
         {
             const std::lock_guard lock{mutex_};
 
-            const auto it = std::find_if(
-                sinks_.begin(),
-                sinks_.end(),
-                [&sink](const auto& registered_sink)
+            if (std::erase_if(sinks_, [&sink](const SinkSlot& slot)
                 {
-                    return registered_sink.sink == &sink;
-                });
-
-            if (it == sinks_.end())
+                    return slot.sink == &sink;
+                }) == 0)
             {
                 return false;
             }
 
-            sinks_.erase(it);
             refresh_single_sink_fast_path();
             return true;
         }
 
-        /**
-         * @brief Logs an error at ERROR level.
-         * @param error Error to publish.
-         * @return true when every registered sink accepted the record.
-         */
         /**
          * @brief Publishes a record to every attached sink.
          * @param level Severity of the record.
@@ -402,12 +375,28 @@ namespace vosp::logger
             return write_entry(level, error);
         }
 
-        [[nodiscard]] bool write_owned(Level level, Error error) override
+        [[nodiscard]] bool write_owned(Level level, Error&& error) override
         {
             return write_entry(level, std::move(error));
         }
 
     private:
+        [[nodiscard]] bool attach_slot(SinkSlot slot)
+        {
+            const std::lock_guard lock{mutex_};
+            if (std::ranges::any_of(sinks_, [&slot](const SinkSlot& registered)
+                {
+                    return registered.sink == slot.sink;
+                }))
+            {
+                return false;
+            }
+
+            sinks_.push_back(std::move(slot));
+            refresh_single_sink_fast_path();
+            return true;
+        }
+
         template<typename ErrorValue>
         [[nodiscard]] bool write_entry(Level level, ErrorValue&& error)
         {
@@ -544,7 +533,7 @@ namespace vosp::logger
             return enqueue(level, error);
         }
 
-        [[nodiscard]] bool write_owned(Level level, Error error) override
+        [[nodiscard]] bool write_owned(Level level, Error&& error) override
         {
             return enqueue(level, std::move(error));
         }
@@ -576,12 +565,12 @@ namespace vosp::logger
             }
         }
 
-        ~PolicyLogger() noexcept { shutdown(); }
+        ~PolicyLogger() noexcept override { shutdown(); }
 
     private:
         struct PendingRecord
         {
-            Level level;
+            Level level = Level::INFO;
             Error error;
         };
 
@@ -679,6 +668,52 @@ namespace vosp::logger
      */
     using ParallelLogger = PolicyLogger<AcceptAllPolicy, ParallelSinkDispatch>;
 
+    namespace detail
+    {
+        struct PreparedTextRecord
+        {
+            std::array<char, 512> prefix{};
+            std::size_t prefix_size = 0;
+            std::string_view message{};
+            bool message_is_buffered = false;
+        };
+
+        [[nodiscard]] inline PreparedTextRecord prepare_text_record(const LogEntry& entry)
+        {
+            PreparedTextRecord record;
+            char* cursor = record.prefix.data();
+            const auto append = [&cursor](std::string_view text)
+            {
+                cursor = std::copy(text.begin(), text.end(), cursor);
+            };
+
+            append("[");
+            append(to_string(entry.level));
+            append("] [");
+            append(to_string(entry.error.category()));
+            append("] code=");
+
+            const auto code_result = std::to_chars(
+                cursor,
+                record.prefix.data() + record.prefix.size(),
+                entry.error.code());
+            cursor = code_result.ptr;
+            append(" message=");
+
+            record.message = entry.error.message();
+            const auto remaining = static_cast<std::size_t>(
+                record.prefix.data() + record.prefix.size() - cursor);
+            if (record.message.size() < remaining)
+            {
+                cursor = std::copy(record.message.begin(), record.message.end(), cursor);
+                *cursor++ = '\n';
+                record.message_is_buffered = true;
+            }
+            record.prefix_size = static_cast<std::size_t>(cursor - record.prefix.data());
+            return record;
+        }
+    }
+
     /**
      * @brief Thread-safe text sink writing one record per line.
      */
@@ -692,18 +727,216 @@ namespace vosp::logger
 
         [[nodiscard]] bool write(const LogEntry& entry) override
         {
+            // Formatting is independent for each call. The mutex protects only
+            // the shared stream and therefore never serializes stack formatting.
+            const auto record = detail::prepare_text_record(entry);
             const std::lock_guard lock{mutex_};
-
-            output_ << '[' << to_string(entry.level) << "] ["
-                    << to_string(entry.error.category()) << "] code="
-                    << entry.error.code() << " message="
-                    << entry.error.message() << '\n';
+            output_.write(
+                record.prefix.data(),
+                static_cast<std::streamsize>(record.prefix_size));
+            if (!record.message_is_buffered)
+            {
+                write_view(record.message);
+                output_.put('\n');
+            }
 
             return static_cast<bool>(output_);
         }
 
     private:
+        void write_view(std::string_view text)
+        {
+            constexpr auto maximum_chunk = static_cast<std::size_t>(
+                std::numeric_limits<std::streamsize>::max());
+            while (!text.empty() && output_)
+            {
+                const auto chunk_size = std::min(text.size(), maximum_chunk);
+                output_.write(text.data(), static_cast<std::streamsize>(chunk_size));
+                text.remove_prefix(chunk_size);
+            }
+        }
+
         std::ostream& output_;
         std::mutex mutex_;
+    };
+
+    /**
+     * @brief High-throughput text sink with one internal buffer per writing thread.
+     *
+     * Records are accumulated without a global lock. A thread acquires the output
+     * lock only after its buffer reaches the configured threshold or when flush()
+     * is called. The sink preserves order within each producer thread; ordering
+     * between different threads is intentionally unspecified.
+     *
+     * @note The stream and sink must outlive every logger operation using them.
+     * @note A successful buffered write means that the record was accepted. Call
+     * flush() to observe the final stream state and make buffered records visible.
+     */
+    class BufferedStreamSink final : public ILogSink
+    {
+    public:
+        /** @brief Default per-thread threshold before automatic stream output. */
+        static constexpr std::size_t default_flush_threshold = 64U * 1024U;
+
+        /**
+         * @param output Destination stream, which is not owned by this sink.
+         * @param flush_threshold Per-thread buffered bytes before automatic output.
+         * @throws std::invalid_argument if flush_threshold is zero.
+         */
+        explicit BufferedStreamSink(
+            std::ostream& output,
+            std::size_t flush_threshold = default_flush_threshold)
+            : output_(output),
+              flush_threshold_(flush_threshold),
+              instance_id_(next_instance_id_.fetch_add(1, std::memory_order_relaxed))
+        {
+            if (flush_threshold_ == 0)
+            {
+                throw std::invalid_argument{"flush threshold must be greater than zero"};
+            }
+        }
+
+        BufferedStreamSink(const BufferedStreamSink&) = delete;
+        BufferedStreamSink& operator=(const BufferedStreamSink&) = delete;
+        BufferedStreamSink(BufferedStreamSink&&) = delete;
+        BufferedStreamSink& operator=(BufferedStreamSink&&) = delete;
+
+        /** @brief Flushes remaining records without throwing during destruction. */
+        ~BufferedStreamSink() noexcept override
+        {
+            try
+            {
+                static_cast<void>(flush());
+            }
+            catch (...)
+            {
+                // Destructors cannot report stream exceptions. Applications that
+                // need delivery status should call flush() explicitly.
+            }
+        }
+
+        /** @brief Accepts a record and automatically outputs a full thread buffer. */
+        [[nodiscard]] bool write(const LogEntry& entry) override
+        {
+            const auto record = detail::prepare_text_record(entry);
+            auto& shard = current_thread_shard();
+            std::lock_guard shard_lock{shard.mutex};
+            shard.buffer.append(record.prefix.data(), record.prefix_size);
+            if (!record.message_is_buffered)
+            {
+                shard.buffer.append(record.message);
+                shard.buffer.push_back('\n');
+            }
+
+            if (shard.buffer.size() < flush_threshold_)
+            {
+                return true;
+            }
+            return flush_shard(shard);
+        }
+
+        /**
+         * @brief Writes all current thread buffers and flushes the destination stream.
+         * @return true when the destination stream remains healthy.
+         */
+        [[nodiscard]] bool flush()
+        {
+            std::vector<Shard*> shards;
+            {
+                const std::lock_guard registry_lock{registry_mutex_};
+                shards.reserve(shards_.size());
+                for (auto& shard : shards_)
+                {
+                    shards.push_back(std::addressof(shard));
+                }
+            }
+
+            bool success = true;
+            for (const auto& shard : shards)
+            {
+                const std::lock_guard shard_lock{shard->mutex};
+                success = flush_shard(*shard) && success;
+            }
+
+            const std::lock_guard output_lock{output_mutex_};
+            output_.flush();
+            return static_cast<bool>(output_) && success;
+        }
+
+        /** @brief Returns the configured per-thread automatic flush threshold. */
+        [[nodiscard]] constexpr std::size_t flush_threshold() const noexcept
+        {
+            return flush_threshold_;
+        }
+
+    private:
+        struct alignas(64) Shard
+        {
+            Shard(std::thread::id producer, std::size_t capacity)
+                : producer(producer)
+            {
+                buffer.reserve(capacity);
+            }
+
+            std::thread::id producer;
+            std::mutex mutex;
+            std::string buffer;
+        };
+
+        [[nodiscard]] Shard& current_thread_shard()
+        {
+            thread_local std::uint64_t cached_instance_id = 0;
+            thread_local Shard* cached_shard = nullptr;
+            if (cached_instance_id == instance_id_)
+            {
+                return *cached_shard;
+            }
+
+            const auto producer = std::this_thread::get_id();
+            {
+                const std::lock_guard registry_lock{registry_mutex_};
+                const auto existing = std::find_if(
+                    shards_.begin(),
+                    shards_.end(),
+                    [producer](const Shard& candidate)
+                    {
+                        return candidate.producer == producer;
+                    });
+                if (existing != shards_.end())
+                {
+                    cached_shard = std::addressof(*existing);
+                }
+                else
+                {
+                    cached_shard = std::addressof(
+                        shards_.emplace_back(producer, flush_threshold_));
+                }
+            }
+            cached_instance_id = instance_id_;
+            return *cached_shard;
+        }
+
+        [[nodiscard]] bool flush_shard(Shard& shard)
+        {
+            if (shard.buffer.empty())
+            {
+                return true;
+            }
+
+            const std::lock_guard output_lock{output_mutex_};
+            output_.write(
+                shard.buffer.data(),
+                static_cast<std::streamsize>(shard.buffer.size()));
+            shard.buffer.clear();
+            return static_cast<bool>(output_);
+        }
+
+        std::ostream& output_;
+        const std::size_t flush_threshold_;
+        const std::uint64_t instance_id_;
+        std::mutex output_mutex_;
+        std::mutex registry_mutex_;
+        std::deque<Shard> shards_;
+        inline static std::atomic<std::uint64_t> next_instance_id_ = 1;
     };
 }

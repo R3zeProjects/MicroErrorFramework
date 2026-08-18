@@ -1,5 +1,6 @@
 #include <vosp.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
@@ -109,6 +110,67 @@ int main()
     const auto async_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - async_start);
 
+    constexpr std::uint32_t worker_task_count = 100'000;
+    vosp::async::IndustrialWorkerPool worker_pool{4, 1024};
+    std::vector<std::future<OperationResult>> worker_futures;
+    worker_futures.reserve(worker_task_count);
+    const auto worker_start = std::chrono::steady_clock::now();
+    for (std::uint32_t index = 0; index < worker_task_count; ++index)
+    {
+        worker_futures.push_back(worker_pool.submit([]() -> OperationResult
+        {
+            return {};
+        }));
+    }
+
+    std::uint32_t worker_successful = 0;
+    for (auto& future : worker_futures)
+    {
+        if (future.get())
+        {
+            ++worker_successful;
+        }
+    }
+    worker_pool.shutdown(vosp::async::ShutdownMode::DRAIN);
+    const auto worker_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - worker_start);
+
+    vosp::async::IndustrialWorkerPool dispatch_pool{4, 1024};
+    std::atomic<std::uint32_t> dispatched = 0;
+    const auto dispatch_start = std::chrono::steady_clock::now();
+    for (std::uint32_t index = 0; index < worker_task_count; ++index)
+    {
+        dispatch_pool.dispatch([&dispatched]() -> OperationResult
+        {
+            dispatched.fetch_add(1, std::memory_order_relaxed);
+            return {};
+        });
+    }
+    dispatch_pool.shutdown(vosp::async::ShutdownMode::DRAIN);
+    const auto dispatch_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - dispatch_start);
+    const auto dispatch_successful = dispatched.load(std::memory_order_relaxed);
+
+    vosp::async::IndustrialWorkerPool bulk_dispatch_pool{4, 1024};
+    std::atomic<std::uint32_t> bulk_dispatched = 0;
+    std::size_t bulk_accepted = 0;
+    const auto bulk_dispatch_start = std::chrono::steady_clock::now();
+    std::vector<vosp::async::IndustrialWorkerPool::Task> bulk_tasks;
+    bulk_tasks.reserve(worker_task_count);
+    for (std::uint32_t index = 0; index < worker_task_count; ++index)
+    {
+        bulk_tasks.emplace_back([&bulk_dispatched]() -> OperationResult
+        {
+            bulk_dispatched.fetch_add(1, std::memory_order_relaxed);
+            return {};
+        });
+    }
+    bulk_accepted = bulk_dispatch_pool.dispatch_bulk(bulk_tasks);
+    bulk_dispatch_pool.shutdown(vosp::async::ShutdownMode::DRAIN);
+    const auto bulk_dispatch_elapsed = std::chrono::duration_cast<
+        std::chrono::microseconds>(std::chrono::steady_clock::now() - bulk_dispatch_start);
+    const auto bulk_dispatch_successful = bulk_dispatched.load(std::memory_order_relaxed);
+
     const auto operations_per_second = [](std::uint32_t operations,
                                           std::chrono::microseconds elapsed)
     {
@@ -128,5 +190,20 @@ int main()
               << "async operations=" << async_successful
               << " elapsed_us=" << async_elapsed.count()
               << " operations_per_second="
-              << operations_per_second(async_successful, async_elapsed) << '\n';
+              << operations_per_second(async_successful, async_elapsed) << '\n'
+              << "worker_pool workers=4 tasks=" << worker_successful
+              << " elapsed_us=" << worker_elapsed.count()
+              << " tasks_per_second="
+              << operations_per_second(worker_successful, worker_elapsed) << '\n'
+              << "worker_dispatch workers=4 tasks=" << dispatch_successful
+              << " elapsed_us=" << dispatch_elapsed.count()
+              << " tasks_per_second="
+              << operations_per_second(dispatch_successful, dispatch_elapsed) << '\n'
+              << "worker_bulk_dispatch workers=4 accepted=" << bulk_accepted
+              << " tasks=" << bulk_dispatch_successful
+              << " elapsed_us=" << bulk_dispatch_elapsed.count()
+              << " tasks_per_second="
+              << operations_per_second(
+                     bulk_dispatch_successful,
+                     bulk_dispatch_elapsed) << '\n';
 }

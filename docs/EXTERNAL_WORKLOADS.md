@@ -15,8 +15,8 @@ runtime API.
 Observed benchmark output:
 
 ```text
-parse_only elapsed_us=178771 operations_per_second=111875
-parse_and_error_control workers=4 elapsed_us=89050 operations_per_second=224593
+parse_only documents=20000 median_operations_per_second=108873
+parse_and_error_control workers=4 documents=20000 median_operations_per_second=311158
 ```
 
 ## fmt
@@ -73,8 +73,11 @@ ctest --test-dir MicroErrorSystem/build-local-integration `
 - local checkout: `third_party/workloads/spdlog`
 - comparison target: `MicroErrorSystemSpdlogComparisonBenchmark`
 
-The comparison uses `spdlog`'s bundled formatter and `null_sink`; it does not
-mix the external fmt ABI with spdlog's bundled fmt. Build and run it with:
+The comparison uses spdlog's bundled fmt implementation and custom counting
+and formatting sinks. It separates prepared-record dispatch from equal-output
+formatting, and validates that both formatting paths consume the same byte
+count. It does not mix the external fmt ABI with spdlog's bundled fmt. Build
+and run it with:
 
 ```powershell
 cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-spdlog-compare `
@@ -82,6 +85,25 @@ cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-spdlog-compare `
   -DBUILD_LOCAL_LIBRARY_COMPARISONS=ON
 cmake --build MicroErrorSystem/build-spdlog-compare --parallel
 MicroErrorSystem/build-spdlog-compare/MicroErrorSystemSpdlogComparisonBenchmark.exe
+```
+
+## Worker pool comparison
+
+- `bshoshany/thread-pool`: `v5.1.0`, commit
+  `bd4533f1f70c2b975cbd5769a60d8eaaea1d2233`;
+- `taskflow/taskflow`: `v4.1.0`, commit
+  `45366fe5bc4f2f8ec9aa590b40c504e296886865`;
+- comparison target: `MicroErrorSystemWorkerPoolComparisonBenchmark`.
+
+The target compares tracked futures and scalar fire-and-forget submission across
+all three executors. It also compares the native bulk-container APIs available
+in MicroErrorSystem and BS::thread_pool. All adapters execute and validate the
+same 100,000 atomic increments on four workers.
+
+```powershell
+cmake --build MicroErrorSystem/build-spdlog-compare `
+  --target MicroErrorSystemWorkerPoolComparisonBenchmark --parallel
+MicroErrorSystem/build-spdlog-compare/MicroErrorSystemWorkerPoolComparisonBenchmark.exe
 ```
 
 ## Reproducibility
@@ -92,4 +114,6 @@ The shallow clones are local-only and ignored by Git. Recreate them with:
 git clone --depth 1 --branch v3.12.0 https://github.com/nlohmann/json.git third_party/workloads/nlohmann-json
 git clone --depth 1 --branch 11.2.0 https://github.com/fmtlib/fmt.git third_party/workloads/fmt
 git clone --depth 1 --branch v0.18.0 https://github.com/yhirose/cpp-httplib.git third_party/workloads/cpp-httplib
+git clone --depth 1 --branch v5.1.0 https://github.com/bshoshany/thread-pool.git third_party/workloads/BS-thread-pool
+git clone --depth 1 --branch v4.1.0 https://github.com/taskflow/taskflow.git third_party/workloads/taskflow
 ```
