@@ -32,7 +32,7 @@ ctest --test-dir MicroErrorSystem/cmake-build-debug --output-on-failure
 The module is header-only:
 
 ```cpp
-#include "vosp.hpp"
+#include <vosp.hpp>
 
 using namespace vosp::error;
 ```

@@ -66,6 +66,24 @@ ctest --test-dir MicroErrorSystem/build-local-integration `
   -R LocalExternalIntegrationTests --output-on-failure
 ```
 
+## spdlog
+
+- repository: `https://github.com/gabime/spdlog`
+- revision: `v1.15.3`
+- local checkout: `third_party/workloads/spdlog`
+- comparison target: `MicroErrorSystemSpdlogComparisonBenchmark`
+
+The comparison uses `spdlog`'s bundled formatter and `null_sink`; it does not
+mix the external fmt ABI with spdlog's bundled fmt. Build and run it with:
+
+```powershell
+cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-spdlog-compare `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DBUILD_LOCAL_LIBRARY_COMPARISONS=ON
+cmake --build MicroErrorSystem/build-spdlog-compare --parallel
+MicroErrorSystem/build-spdlog-compare/MicroErrorSystemSpdlogComparisonBenchmark.exe
+```
+
 ## Reproducibility
 
 The shallow clones are local-only and ignored by Git. Recreate them with:

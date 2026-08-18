@@ -31,7 +31,7 @@ ctest --test-dir MicroErrorSystem/cmake-build-debug --output-on-failure
 Модуль header-only, поэтому достаточно подключить один файл:
 
 ```cpp
-#include "vosp.hpp"
+#include <vosp.hpp>
 
 using namespace vosp::error;
 ```

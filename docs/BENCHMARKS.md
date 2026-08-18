@@ -80,6 +80,24 @@ The raw baseline intentionally omits category validation, capacity handling,
 error propagation, routing, and lifecycle semantics. It is an overhead
 reference, not an apples-to-apples replacement for the framework API.
 
+## Logger comparison with spdlog
+
+The logger component was compared with `spdlog v1.15.3` using its in-memory
+`null_sink`, 100,000 formatted records, and a four-worker workload:
+
+```text
+micro_single records=100000 elapsed_us=30842 records_per_second=3.24233e+06
+spdlog_single records=100000 elapsed_us=6490 records_per_second=1.54083e+07
+micro_multi records=100000 elapsed_us=52529 records_per_second=1.90371e+06
+spdlog_multi records=100000 elapsed_us=4067 records_per_second=2.45881e+07
+```
+
+This is a narrow throughput comparison. `spdlog` uses a null sink, while
+MicroErrorSystem creates typed error/log-entry objects and invokes its sink
+callback contract. The result identifies an optimization opportunity in the
+logger hot path; it does not invalidate the framework's error registration,
+routing, policy, or lifecycle features.
+
 ## Fuzzing
 
 - Ubuntu CI runs the coverage-guided LibFuzzer target for 10,000 inputs;

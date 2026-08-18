@@ -25,6 +25,10 @@ option(BUILD_LOCAL_EXTERNAL_INTEGRATIONS
     "Build integrations against local fmt and cpp-httplib checkouts"
     OFF
 )
+option(BUILD_LOCAL_LIBRARY_COMPARISONS
+    "Build benchmarks against local comparable libraries"
+    OFF
+)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -139,6 +143,24 @@ if(BUILD_LOCAL_EXTERNAL_INTEGRATIONS)
         PRIVATE FMT_HEADER_ONLY=1
     )
     enable_sanitizers(MicroErrorSystemLocalExternalIntegrationTests)
+endif()
+
+if(BUILD_LOCAL_LIBRARY_COMPARISONS)
+    set(LocalSpdlogIncludeDir "${LOCAL_EXTERNAL_WORKLOAD_ROOT}/spdlog/include")
+    if(NOT EXISTS "${LocalSpdlogIncludeDir}/spdlog/logger.h")
+        message(FATAL_ERROR "spdlog checkout not found under ${LOCAL_EXTERNAL_WORKLOAD_ROOT}")
+    endif()
+
+    add_executable(MicroErrorSystemSpdlogComparisonBenchmark
+        benchmarks/vosp_spdlog_comparison_benchmark.cpp
+    )
+    target_link_libraries(MicroErrorSystemSpdlogComparisonBenchmark
+        PRIVATE MicroErrorSystemHeaders
+    )
+    target_include_directories(MicroErrorSystemSpdlogComparisonBenchmark
+        PRIVATE "${LocalSpdlogIncludeDir}"
+    )
+    enable_sanitizers(MicroErrorSystemSpdlogComparisonBenchmark)
 endif()
 
 if(BUILD_TESTING)

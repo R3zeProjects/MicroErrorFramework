@@ -54,6 +54,10 @@ All values below are real local Release measurements, not theoretical claims.
 | `nlohmann/json`, parse-only, 20,000 documents | **111,875 documents/s** |
 | `nlohmann/json`, parse + error control, 4 workers | **224,593 documents/s** |
 | `fmt` + `cpp-httplib` integration | **1,000 requests; 500 errors routed** |
+| MicroErrorSystem logger, single-threaded | **3.24233M records/s** |
+| `spdlog` `null_sink`, single-threaded | **15.4083M records/s** |
+| MicroErrorSystem logger, 4 workers | **1.90371M records/s** |
+| `spdlog` `null_sink`, 4 workers | **24.5881M records/s** |
 
 Verification results:
 
@@ -68,6 +72,13 @@ The benchmark machine was an AMD Ryzen 7 PRO 1700X with 8 physical cores,
 16 logical processors, 31.95 GiB RAM, Windows 10 Pro, and Clang 22.1.6.
 Detailed methodology and baseline comparisons are available in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+The logger comparison uses `spdlog v1.15.3` with its `null_sink` and the same
+100,000 formatted records. `spdlog` is faster in this narrow sink-throughput
+workload. The result is expected: MicroErrorSystem additionally constructs a
+typed `Error`, `LogEntry`, timestamp, thread id, and executes a user sink
+callback. This is a component comparison, not a claim that one complete
+framework replaces the other.
 
 ## Architecture
 
@@ -138,7 +149,7 @@ On Windows, the executable suffix is `.exe`.
 ## Minimal example
 
 ```cpp
-#include "vosp.hpp"
+#include <vosp.hpp>
 
 using namespace vosp::error;
 
@@ -179,7 +190,7 @@ if (result) {
 ## Industrial worker pool
 
 ```cpp
-#include "vosp.hpp"
+#include <vosp.hpp>
 
 vosp::async::IndustrialWorkerPool pool{
     4,    // worker count
@@ -203,7 +214,7 @@ cancellation.
 ## Logging
 
 ```cpp
-#include "vosp.hpp"
+#include <vosp.hpp>
 #include <iostream>
 
 vosp::logger::ConsoleSink console{std::cout};
@@ -403,6 +414,7 @@ The local workload set currently contains shallow clones of:
 | [`nlohmann/json`](https://github.com/nlohmann/json) | `v3.12.0` | malformed-input classification and JSON parsing |
 | [`fmtlib/fmt`](https://github.com/fmtlib/fmt) | `11.2.0` | high-throughput formatting and log-message generation |
 | [`yhirose/cpp-httplib`](https://github.com/yhirose/cpp-httplib) | `v0.18.0` | concurrent request/error-path workload |
+| [`gabime/spdlog`](https://github.com/gabime/spdlog) | `v1.15.3` | logger throughput comparison |
 
 The `nlohmann/json` workload is wired into the external CMake stress target.
 The `fmt` and `cpp-httplib` repositories are wired into an opt-in local HTTP
