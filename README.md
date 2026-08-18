@@ -475,9 +475,7 @@ MicroErrorSystem/
 - [Architecture](docs/ARCHITECTURE.md)
 - [Benchmark report](docs/BENCHMARKS.md)
 - [External workload validation](docs/EXTERNAL_WORKLOADS.md)
-- [Russian documentation](docs/README.ru.md)
 - [English API documentation](docs/README.en.md)
-- [简体中文文档](docs/README.zh-CN.md)
 
 ## License
 
