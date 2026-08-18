@@ -86,7 +86,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install toolchain
-        run: .github/scripts/install-apt-packages.sh clang-19 ninja-build g++-14
+        run: >-
+          .github/scripts/install-apt-packages.sh
+          clang-19 libclang-rt-19-dev ninja-build g++-14
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -136,7 +138,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install toolchain
-        run: .github/scripts/install-apt-packages.sh clang-19 ninja-build g++-14
+        run: >-
+          .github/scripts/install-apt-packages.sh
+          clang-19 libclang-rt-19-dev ninja-build g++-14
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build

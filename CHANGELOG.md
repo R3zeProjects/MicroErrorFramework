@@ -26,6 +26,8 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 - Linux CI package installation now bypasses a failing Azure Ubuntu mirror and
   uses bounded APT retries and network timeouts through one shared script.
+- Minimal CI package installation explicitly includes the Clang 19 sanitizer
+  runtime required by ASan, UBSan, and LibFuzzer link steps.
 - Linux Clang CI now uses libc++ in its complete experimental-library mode,
   which provides `std::expected`, `std::jthread`, and `std::stop_token` on the
   runner's libc++ 18; configuration fails early with an actionable diagnostic

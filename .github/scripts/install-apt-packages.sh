@@ -5,7 +5,10 @@ set -euo pipefail
 # GitHub-hosted Ubuntu runners normally use an Azure mirror. During regional
 # outages apt can spend several minutes retrying it before falling back. Use the
 # canonical HTTPS mirror and retain apt's own bounded retry policy.
-for source_file in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+for source_file in \
+    /etc/apt/apt-mirrors.txt \
+    /etc/apt/sources.list \
+    /etc/apt/sources.list.d/ubuntu.sources; do
     if [[ -f "${source_file}" ]]; then
         sudo sed -i \
             's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
