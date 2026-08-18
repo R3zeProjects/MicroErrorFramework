@@ -1,0 +1,14 @@
+# The standard permits condition-variable notification after releasing the
+# associated mutex. VOSP deliberately does this to wake waiters without causing
+# an immediate lock hand-off. Helgrind reports the valid pattern as "dubious";
+# ThreadSanitizer still checks the complete concurrency test suite for races.
+{
+   cxx_condition_variable_notify_without_lock
+   Helgrind:Misc
+   fun:pthread_cond_signal*
+}
+{
+   cxx_condition_variable_broadcast_without_lock
+   Helgrind:Misc
+   fun:pthread_cond_broadcast*
+}

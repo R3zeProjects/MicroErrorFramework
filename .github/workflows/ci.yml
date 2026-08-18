@@ -25,12 +25,12 @@ jobs:
             cxxflags: ''
           - name: Clang
             compiler: clang++
-            cxxflags: -stdlib=libc++
+            cxxflags: -stdlib=libc++ -fexperimental-library
     env:
       CXXFLAGS: ${{ matrix.cxxflags }}
       LDFLAGS: ${{ matrix.cxxflags }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain
         run: >-
           sudo apt-get update && sudo apt-get install -y
@@ -52,7 +52,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure
         run: cmake -S . -B build -A x64 -DBUILD_TESTING=ON -DBUILD_BENCHMARKS=ON
       - name: Build
@@ -65,7 +65,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure
         run: >-
           cmake -G Ninja -S . -B build
@@ -83,10 +83,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      CXXFLAGS: -stdlib=libc++
-      LDFLAGS: -stdlib=libc++
+      CXXFLAGS: -stdlib=libc++ -fexperimental-library
+      LDFLAGS: -stdlib=libc++ -fexperimental-library
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain
         run: >-
           sudo apt-get update && sudo apt-get install -y
@@ -109,10 +109,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      CXXFLAGS: -stdlib=libc++
-      LDFLAGS: -stdlib=libc++
+      CXXFLAGS: -stdlib=libc++ -fexperimental-library
+      LDFLAGS: -stdlib=libc++ -fexperimental-library
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain
         run: >-
           sudo apt-get update && sudo apt-get install -y
@@ -137,10 +137,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      CXXFLAGS: -stdlib=libc++
-      LDFLAGS: -stdlib=libc++
+      CXXFLAGS: -stdlib=libc++ -fexperimental-library
+      LDFLAGS: -stdlib=libc++ -fexperimental-library
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install toolchain
         run: >-
           sudo apt-get update && sudo apt-get install -y
@@ -161,7 +161,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Valgrind
         run: sudo apt-get update && sudo apt-get install -y valgrind ninja-build
       - name: Configure
@@ -179,7 +179,7 @@ jobs:
       - name: Helgrind
         run: >-
           valgrind --tool=helgrind --fair-sched=yes
-          --check-cond-signal-mutex=no --error-exitcode=1
+          --suppressions=.github/valgrind/helgrind.supp --error-exitcode=1
           ./build/MicroErrorSystemLoggerTests
 
   static-analysis:
@@ -187,10 +187,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      CXXFLAGS: -stdlib=libc++
-      LDFLAGS: -stdlib=libc++
+      CXXFLAGS: -stdlib=libc++ -fexperimental-library
+      LDFLAGS: -stdlib=libc++ -fexperimental-library
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install clang-tidy
         run: >-
           sudo apt-get update && sudo apt-get install -y

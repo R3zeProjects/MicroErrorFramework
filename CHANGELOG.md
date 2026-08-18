@@ -24,11 +24,18 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ### Fixed
 
-- Linux Clang CI now uses libc++, whose C++23 mode provides `std::expected`;
-  configuration fails early with an actionable diagnostic for unsupported
-  standard-library combinations.
+- Linux Clang CI now uses libc++ in its complete experimental-library mode,
+  which provides `std::expected`, `std::jthread`, and `std::stop_token` on the
+  runner's libc++ 18; configuration fails early with an actionable diagnostic
+  for unsupported standard-library combinations.
+- Header-only package consumers now inherit the platform thread dependency, and
+  the installed CMake package resolves it before importing `vosp::vosp`.
+- Minimal logger metadata no longer marks the non-literal `std::thread::id`
+  return type `constexpr`, restoring portability across standard libraries.
 - Helgrind now exercises logger concurrency without libstdc++ `std::future`
-  false positives; ThreadSanitizer remains the authoritative full race gate.
+  false positives and suppresses only the standards-valid condition-variable
+  notification-after-unlock diagnostic; ThreadSanitizer remains the
+  authoritative full race gate.
 
 ## [0.1.0-beta] - 2026-08-18
 

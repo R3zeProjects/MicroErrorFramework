@@ -11,6 +11,9 @@ include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
 option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer" OFF)
 option(ENABLE_COVERAGE "Enable source coverage instrumentation" OFF)
@@ -41,13 +44,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include(CheckCXXSourceCompiles)
 check_cxx_source_compiles(
     "#include <expected>
-     int main() { std::expected<void, int> value; return value ? 0 : 1; }"
-    VOSP_HAS_STD_EXPECTED
+     #include <thread>
+     int main() {
+         std::expected<void, int> value;
+         std::jthread worker{[](std::stop_token) {}};
+         return value ? 0 : 1;
+     }"
+    VOSP_HAS_REQUIRED_CXX23_LIBRARY
 )
-if(NOT VOSP_HAS_STD_EXPECTED)
+if(NOT VOSP_HAS_REQUIRED_CXX23_LIBRARY)
     message(FATAL_ERROR
-        "The selected C++23 standard library does not provide std::expected. "
-        "Use GCC with a recent libstdc++, MSVC, or Clang with -stdlib=libc++."
+        "The selected standard library does not provide the required C++20/23 "
+        "facilities (std::expected, std::jthread, and std::stop_token). Use GCC "
+        "with a recent libstdc++, MSVC, or a libc++ version that implements them."
     )
 endif()
 
@@ -60,6 +69,7 @@ target_include_directories(MicroErrorSystemHeaders
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(MicroErrorSystemHeaders INTERFACE cxx_std_23)
+target_link_libraries(MicroErrorSystemHeaders INTERFACE Threads::Threads)
 
 install(TARGETS MicroErrorSystemHeaders
     EXPORT vospTargets

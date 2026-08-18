@@ -117,7 +117,7 @@ namespace vosp::logger
             return {};
         }
 
-        [[nodiscard]] static constexpr std::thread::id thread_id() noexcept
+        [[nodiscard]] static std::thread::id thread_id() noexcept
         {
             return {};
         }
