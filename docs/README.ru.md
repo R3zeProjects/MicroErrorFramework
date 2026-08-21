@@ -1,4 +1,4 @@
-# Руководство API MicroErrorSystem
+# Руководство API MicroErrorFramework
 
 ## Подключение
 
@@ -20,6 +20,19 @@ Result<int> attempts = 3;
 
 `Error` сравнивается по category, code и message. `Result<T>` — это
 `std::expected<T, Error>`.
+
+Для диагностики определено стабильное строковое представление:
+
+```cpp
+#include <format>
+
+const std::string text = to_string(error);
+const std::string formatted = std::format("{}", error);
+// Оба значения: "[NETWORK:1001] Connection refused"
+```
+
+Поддерживается только пустая спецификация `{}`. Другие параметры formatter
+отклоняются, чтобы сериализованное представление ошибки не менялось неявно.
 
 ## Register
 

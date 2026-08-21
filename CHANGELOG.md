@@ -5,6 +5,45 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.2.5-beta] - 2026-08-21
+
+### CI
+
+- Added a dedicated public API contract gate that runs positive, negative and
+  compile-fail contract tests independently of benchmarks.
+- Updated the installed-package gate to enforce the exact `0.2.5` CMake package
+  version while continuing to reject test and benchmark artifacts.
+
+## [0.2.4-beta] - 2026-08-21
+
+### Documentation
+
+- Defined the stable source, ownership, formatting, policy-selection and
+  compatibility contracts for the complete `0.2.x-beta` release line.
+- Documented the positive, negative and compile-fail tests that enforce the
+  public API boundary without changing runtime behavior.
+
+## [0.2.3-beta] - 2026-08-21
+
+### Added
+
+- Dedicated negative API tests for unsupported formatting, unroutable errors,
+  invalid sink state, null sink ownership, and worker queue limits.
+
+## [0.2.2-beta] - 2026-08-21
+
+### Added
+
+- Cross-platform compile-fail contracts for invalid register, executor, sink,
+  and logger dispatch policies.
+
+## [0.2.1-beta] - 2026-08-21
+
+### Added
+
+- Stable `[CATEGORY:code] message` representation through
+  `vosp::error::to_string`, `category_name`, and `std::formatter<Error>`.
+
 ## [0.2.0-beta] - 2026-08-21
 
 ### Added

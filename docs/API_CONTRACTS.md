@@ -2,16 +2,53 @@
 
 ## Status and compatibility
 
-The current release line is `0.1.x-beta`. The public API is every declaration
+The current release line is `0.2.x-beta`. The public API is every declaration
 reachable from `include/vosp.hpp`; implementation details under `detail` are not
 public. Before 1.0, minor releases may change source compatibility when the
-change is recorded in `CHANGELOG.md`. Patch releases must remain source
-compatible and contain fixes or measurement/documentation updates only.
+change is recorded in `CHANGELOG.md`. Patch releases remain source compatible:
+they may add opt-in APIs and validation, but do not remove declarations or
+change the documented semantics of existing calls.
 
 The project does not promise a stable binary ABI before 1.0. It is header-only,
 so all consumers must rebuild after an upgrade. A 1.0 release requires a
 documented API freeze, green supported-compiler CI, Linux concurrency gates and
 release-candidate soak evidence.
+
+## Stable 0.2.x source contracts
+
+- `<vosp.hpp>` is the umbrella source entry point in both the source tree and
+  the installed package.
+- `Error` owns its message and compares category, numeric code and message.
+  `category_name()` returns stable uppercase category names and
+  `to_string(error)` returns `[CATEGORY:code] message`.
+- `std::formatter<Error>` produces the same representation as `to_string()`.
+  The only supported format specification is the empty one (`{}`); unsupported
+  specifications are rejected with `std::format_error`.
+- `Result<T>` is `std::expected<T, Error>` and `OperationResult` is
+  `Result<void>`. Expected operational failures use these result types rather
+  than exceptions.
+- `Register`, `System`, `Sink`, and `Logger` are the primary policy-selected
+  types. The specialized names retained for migration are exact aliases and do
+  not add storage, allocation, virtual dispatch or runtime mode selection.
+- Register, system, sink and logger policies are selected at compile time and
+  constrained by concepts. Unsupported policies are intentionally ill-formed.
+- Benchmark and third-party integration targets are opt-in repository tooling;
+  they are not part of the installed package or its transitive dependencies.
+
+## Contract verification
+
+The repository verifies the public boundary at three levels:
+
+- positive unit and unified-API tests compile and exercise supported usage;
+- negative runtime tests cover rejected formatter specifications, unroutable
+  errors, invalid sinks and invalid queue limits;
+- compile-fail targets prove that unsupported register, executor, sink and
+  logger policies do not satisfy their public concepts.
+
+CTest labels the latter two groups `api-contract`; compile-fail cases additionally
+use `compile-fail`. The installed-package consumer builds against only the
+generated CMake package and installed headers, which prevents repository-local
+includes from hiding packaging defects.
 
 ## Ownership and lifetime
 

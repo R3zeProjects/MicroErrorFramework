@@ -7,7 +7,7 @@
 > выбираются compile-time политиками.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.2.0--beta-orange)
+![API](https://img.shields.io/badge/API-0.2.5--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -199,9 +199,10 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Локально унифицированный API прошёл `6/6` CTest на MSVC и Clang. Полный
-production benchmark также завершён успешно. Результаты зависят от железа,
-toolchain и workload; методика находится в benchmark-документации.
+Локально полный набор прошёл `10/10` CTest на MSVC и Clang, а выделенный
+API-contract gate — `7/7`. Полный production benchmark также завершён успешно.
+Результаты зависят от железа, toolchain и workload; методика находится в
+benchmark-документации.
 
 ## Документация
 

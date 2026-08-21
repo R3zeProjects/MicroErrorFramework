@@ -2,9 +2,40 @@
 
 ## Статус совместимости
 
-Текущая линия — `0.1.x-beta`. Публичным считается API, доступный через
+Текущая линия — `0.2.x-beta`. Публичным считается API, доступный через
 `include/vosp.hpp`; объявления в `detail` не являются контрактом. До 1.0 minor
-release может менять source compatibility с записью в `CHANGELOG.md`.
+release может менять source compatibility с записью в `CHANGELOG.md`. Patch
+release сохраняет source compatibility: он может добавлять opt-in API и
+проверки, но не удаляет объявления и не меняет документированную семантику.
+
+## Стабильные source-контракты 0.2.x
+
+- `<vosp.hpp>` — единая точка подключения в source tree и installed package.
+- `Error` владеет сообщением и сравнивает category, code и message.
+  `category_name()` возвращает стабильное имя в верхнем регистре, а
+  `to_string(error)` — строку `[CATEGORY:code] message`.
+- `std::formatter<Error>` выдаёт тот же результат, что и `to_string()`.
+  Поддерживается только пустая спецификация `{}`; остальные отклоняются через
+  `std::format_error`.
+- `Result<T>` является `std::expected<T, Error>`, а `OperationResult` —
+  `Result<void>`.
+- `Register`, `System`, `Sink` и `Logger` — основные policy-selected типы.
+  Compatibility aliases не добавляют storage, allocation, virtual dispatch или
+  runtime mode selection.
+- Policies выбираются на этапе компиляции и ограничены concepts. Неподходящие
+  register, executor, sink и logger policies намеренно не компилируются.
+- Benchmarks и third-party integrations являются opt-in инструментами
+  репозитория и не входят в installed package.
+
+## Проверка контрактов
+
+- positive tests собирают и выполняют поддерживаемый API;
+- negative runtime tests проверяют formatter, routing, sink и queue failures;
+- compile-fail targets подтверждают отклонение неподходящих policies;
+- package consumer собирается только по установленным headers и CMake config.
+
+CTest использует label `api-contract`, а compile-fail cases дополнительно
+помечены `compile-fail`. Эти проверки запускаются отдельным GitHub Actions gate.
 
 ## Владение и время жизни
 

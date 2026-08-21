@@ -61,6 +61,20 @@ const Error same{Category::NETWORK, 1001, "Connection refused"};
 const bool equal = error == same;
 ```
 
+Errors have one stable text representation suitable for diagnostics and logs:
+
+```cpp
+#include <format>
+
+const std::string text = to_string(error);
+const std::string formatted = std::format("{}", error);
+// Both values are: "[NETWORK:1001] Connection refused"
+```
+
+Only the empty `std::format` specification is supported. Width, alignment and
+other formatter options are deliberately rejected so the serialized diagnostic
+form cannot silently change.
+
 ## Create registers
 
 For bounded in-memory storage, use `Register`:

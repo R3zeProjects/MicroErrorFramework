@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <format>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -95,7 +96,28 @@ namespace
                check(error == equal_error, "Error equality") &&
                check(error != different_error, "Error inequality") &&
                check(!predefined::uncategorized_error.has_category(),
-                     "uncategorized predefined error");
+                      "uncategorized predefined error");
+    }
+
+    /** @brief Verifies the stable text and std::format representations. */
+    bool test_error_formatting()
+    {
+        // The unnamed value intentionally verifies the defensive fallback.
+        // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+        constexpr auto unknown_category = static_cast<Category>(77);
+        const Error error{Category::NETWORK, 42, "connection refused"};
+        const Error unknown{unknown_category, 9, "unknown category"};
+
+        return check(category_name(Category::NETWORK) == "NETWORK",
+                     "known category name") &&
+               check(category_name(unknown_category) == "UNKNOWN",
+                     "unknown category name") &&
+               check(to_string(error) == "[NETWORK:42] connection refused",
+                     "Error to_string representation") &&
+               check(std::format("{}", error) == to_string(error),
+                     "Error std::formatter representation") &&
+               check(to_string(unknown) == "[UNKNOWN:9] unknown category",
+                     "unknown category formatting");
     }
 
     /** @brief Verifies successful and failed std::expected-based results. */
@@ -601,7 +623,7 @@ namespace
 
 int main()
 {
-    return test_error() && test_result() && test_handler() &&
+    return test_error() && test_error_formatting() && test_result() && test_handler() &&
            test_memory_register() && test_memory_register_limits() &&
            test_execution_modes() &&
            test_worker_pool() ? 0 : 1;

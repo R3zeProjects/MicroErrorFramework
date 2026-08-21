@@ -76,6 +76,29 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  public-api-contracts:
+    name: Linux public API contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install toolchain
+        run: .github/scripts/install-apt-packages.sh ninja-build
+      - name: Configure contracts only
+        run: >-
+          cmake -G Ninja -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+          -DBUILD_BENCHMARKS=OFF
+      - name: Build supported API cases
+        run: >-
+          cmake --build build --parallel
+          --target MicroErrorSystemTests
+          MicroErrorSystemUnifiedApiTests
+          MicroErrorSystemNegativeApiTests
+      - name: Test positive, negative and compile-fail contracts
+        run: ctest --test-dir build -L api-contract --output-on-failure
+
   installed-package:
     name: Linux installed package contract
     runs-on: ubuntu-latest
@@ -95,7 +118,7 @@ jobs:
       - name: Verify version and package boundary
         shell: bash
         run: |
-          grep -F 'set(PACKAGE_VERSION "0.2.0")' \
+          grep -F 'set(PACKAGE_VERSION "0.2.5")' \
             install/lib/cmake/vosp/vospConfigVersion.cmake
           if find install -type f \
             \( -iname '*benchmark*' -o -iname '*test*' \

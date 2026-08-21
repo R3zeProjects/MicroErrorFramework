@@ -5,6 +5,7 @@
 #include <concepts>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <future>
 #include <functional>
 #include <memory>
@@ -28,6 +29,24 @@ namespace vosp::error
         FILESYSTEM,
         NONE = 0xffff
     };
+
+    /** @brief Returns the stable public name of an error category. */
+    [[nodiscard]] constexpr std::string_view category_name(Category category) noexcept
+    {
+        switch (category)
+        {
+        case Category::NETWORK:
+            return "NETWORK";
+        case Category::DATABASE:
+            return "DATABASE";
+        case Category::FILESYSTEM:
+            return "FILESYSTEM";
+        case Category::NONE:
+            return "NONE";
+        }
+
+        return "UNKNOWN";
+    }
 
     /**
      * @brief Error value containing a code, message and optional category.
@@ -80,6 +99,18 @@ namespace vosp::error
         std::uint32_t code_;
         Category category_;
     };
+
+    /**
+     * @brief Formats an error as `[CATEGORY:code] message`.
+     * @note The representation is stable throughout the 0.2.x release line.
+     */
+    [[nodiscard]] inline std::string to_string(const Error& error)
+    {
+        return std::format("[{}:{}] {}",
+                           category_name(error.category()),
+                           error.code(),
+                           error.message());
+    }
 
     /**
      * @brief Hash function for using Error in unordered containers.
@@ -700,3 +731,28 @@ namespace vosp::error
     using System = typename detail::SystemSelector<Policy, Registers...>::Type;
 
 }
+
+/** @brief Enables `std::format("{}", error)` with the stable vosp representation. */
+template<>
+struct std::formatter<vosp::error::Error, char>
+{
+    constexpr auto parse(std::format_parse_context& context)
+    {
+        auto iterator = context.begin();
+        if (iterator != context.end() && *iterator != '}')
+        {
+            throw std::format_error{"vosp::error::Error does not accept format specifiers"};
+        }
+        return iterator;
+    }
+
+    template<typename FormatContext>
+    auto format(const vosp::error::Error& error, FormatContext& context) const
+    {
+        return std::format_to(context.out(),
+                              "[{}:{}] {}",
+                              vosp::error::category_name(error.category()),
+                              error.code(),
+                              error.message());
+    }
+};

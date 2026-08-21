@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MicroErrorSystem
-    VERSION 0.2.0
+    VERSION 0.2.5
     LANGUAGES CXX
 )
 
@@ -280,6 +280,50 @@ if(BUILD_TESTING)
         PRIVATE MicroErrorSystemHeaders
     )
 
+    add_executable(MicroErrorSystemNegativeApiTests
+        tests/vosp_negative_api_tests.cpp
+    )
+    target_link_libraries(MicroErrorSystemNegativeApiTests
+        PRIVATE MicroErrorSystemHeaders
+    )
+
+    function(add_compile_fail_contract target source)
+        add_executable(${target} EXCLUDE_FROM_ALL ${source})
+        target_link_libraries(${target} PRIVATE MicroErrorSystemHeaders)
+
+        set(test_name "MicroErrorSystem.CompileFail.${target}")
+        add_test(
+            NAME ${test_name}
+            COMMAND ${CMAKE_COMMAND}
+                    --build ${CMAKE_BINARY_DIR}
+                    --config $<CONFIG>
+                    --target ${target}
+        )
+        set_tests_properties(${test_name} PROPERTIES
+            WILL_FAIL TRUE
+            RUN_SERIAL TRUE
+            LABELS "api-contract;compile-fail"
+            TIMEOUT 120
+        )
+    endfunction()
+
+    add_compile_fail_contract(
+        InvalidRegisterPolicy
+        tests/compile_fail/invalid_register_policy.cpp
+    )
+    add_compile_fail_contract(
+        InvalidAsyncExecutor
+        tests/compile_fail/invalid_async_executor.cpp
+    )
+    add_compile_fail_contract(
+        InvalidSinkPolicy
+        tests/compile_fail/invalid_sink_policy.cpp
+    )
+    add_compile_fail_contract(
+        InvalidLoggerDispatchPolicy
+        tests/compile_fail/invalid_logger_dispatch_policy.cpp
+    )
+
     if(BUILD_EXTERNAL_STRESS_TESTS)
         add_executable(MicroErrorSystemNlohmannStressTests
             tests/vosp_nlohmann_stress_tests.cpp
@@ -301,11 +345,13 @@ if(BUILD_TESTING)
     enable_sanitizers(MicroErrorSystemWorkerPoolStressTests)
     enable_sanitizers(MicroErrorSystemConcurrencyContractTests)
     enable_sanitizers(MicroErrorSystemUnifiedApiTests)
+    enable_sanitizers(MicroErrorSystemNegativeApiTests)
     enable_coverage(MicroErrorSystemTests)
     enable_coverage(MicroErrorSystemLoggerTests)
     enable_coverage(MicroErrorSystemWorkerPoolStressTests)
     enable_coverage(MicroErrorSystemConcurrencyContractTests)
     enable_coverage(MicroErrorSystemUnifiedApiTests)
+    enable_coverage(MicroErrorSystemNegativeApiTests)
     if(BUILD_EXTERNAL_STRESS_TESTS)
         enable_sanitizers(MicroErrorSystemNlohmannStressTests)
         enable_coverage(MicroErrorSystemNlohmannStressTests)
@@ -333,6 +379,16 @@ if(BUILD_TESTING)
     add_test(
         NAME MicroErrorSystem.UnifiedApiTests
         COMMAND MicroErrorSystemUnifiedApiTests
+    )
+    add_test(
+        NAME MicroErrorSystem.NegativeApiTests
+        COMMAND MicroErrorSystemNegativeApiTests
+    )
+    set_tests_properties(
+        MicroErrorSystem.Tests
+        MicroErrorSystem.UnifiedApiTests
+        MicroErrorSystem.NegativeApiTests
+        PROPERTIES LABELS "api-contract"
     )
     set_tests_properties(MicroErrorSystem.ConcurrencyContractTests
         PROPERTIES TIMEOUT 120
@@ -381,6 +437,7 @@ if(BUILD_TESTING)
             MicroErrorSystem.WorkerPoolStressTests
             MicroErrorSystem.ConcurrencyContractTests
             MicroErrorSystem.UnifiedApiTests
+            MicroErrorSystem.NegativeApiTests
             PROPERTIES
                 ENVIRONMENT_MODIFICATION "${MicroErrorSystemTestPathModification}"
         )
