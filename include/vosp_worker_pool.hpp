@@ -22,6 +22,10 @@
 #include <variant>
 #include <vector>
 
+#if defined(VOSP_ENABLE_HELGRIND_ANNOTATIONS)
+#include <valgrind/helgrind.h>
+#endif
+
 namespace vosp::async
 {
     using vosp::error::Category;
@@ -31,6 +35,27 @@ namespace vosp::async
     inline constexpr std::size_t max_worker_count = 1024;
     inline constexpr std::size_t max_queue_capacity = 1024;
     inline constexpr std::uint32_t task_cancelled_code = 0xE004;
+
+    namespace detail
+    {
+        inline void helgrind_happens_before(const void* address) noexcept
+        {
+#if defined(VOSP_ENABLE_HELGRIND_ANNOTATIONS)
+            ANNOTATE_HAPPENS_BEFORE(address);
+#else
+            static_cast<void>(address);
+#endif
+        }
+
+        inline void helgrind_happens_after(const void* address) noexcept
+        {
+#if defined(VOSP_ENABLE_HELGRIND_ANNOTATIONS)
+            ANNOTATE_HAPPENS_AFTER(address);
+#else
+            static_cast<void>(address);
+#endif
+        }
+    }
 
     /** @brief Defines what happens to queued work during shutdown. */
     enum class ShutdownMode : std::uint8_t
@@ -182,6 +207,7 @@ namespace vosp::async
                     const auto available = queue_capacity_ - pending_from_state(state);
                     if (available == 0) continue;
 
+                    detail::helgrind_happens_after(&queue_state_);
                     enqueued = std::min(tasks.size() - accepted, available);
                     for (std::size_t index = 0; index < enqueued; ++index)
                     {
@@ -190,6 +216,7 @@ namespace vosp::async
                         queue_tail_ = next_queue_index(queue_tail_);
                     }
                     accepted += enqueued;
+                    detail::helgrind_happens_before(&queue_state_);
                     queue_state_.fetch_add(enqueued, std::memory_order_release);
                 }
 
@@ -226,6 +253,7 @@ namespace vosp::async
                     completion_epoch_.wait(epoch, std::memory_order_acquire);
                 waiting_for_idle_.fetch_sub(1, std::memory_order_relaxed);
             }
+            detail::helgrind_happens_after(&queue_state_);
         }
 
     private:
@@ -262,8 +290,10 @@ namespace vosp::async
                         throw std::runtime_error("Cannot submit task after worker pool shutdown");
                     if (pending_from_state(state) == queue_capacity_) continue;
 
+                    detail::helgrind_happens_after(&queue_state_);
                     tasks_[queue_tail_].emplace(std::move(item));
                     queue_tail_ = next_queue_index(queue_tail_);
+                    detail::helgrind_happens_before(&queue_state_);
                     queue_state_.fetch_add(1, std::memory_order_release);
                 }
 
@@ -428,6 +458,7 @@ namespace vosp::async
                         continue;
                     }
 
+                    detail::helgrind_happens_after(&queue_state_);
                     const bool claim_bulk = tasks_[queue_head_]->bulk;
                     const auto limit = claim_bulk
                         ? std::min(bulk_claim_size_, pending_from_state(state))
@@ -440,6 +471,7 @@ namespace vosp::async
                         queue_head_ = next_queue_index(queue_head_);
                         ++claimed;
                     }
+                    detail::helgrind_happens_before(&queue_state_);
                     queue_state_.fetch_add(
                         claimed * (active_unit_ - 1), std::memory_order_acq_rel);
                 }
@@ -510,6 +542,7 @@ namespace vosp::async
 
         void finish_tasks(std::size_t count) noexcept
         {
+            detail::helgrind_happens_before(&queue_state_);
             const auto previous_state =
                 queue_state_.fetch_sub(count * active_unit_, std::memory_order_release);
             if (active_from_state(previous_state) == count &&
@@ -566,6 +599,7 @@ namespace vosp::async
             const std::scoped_lock queue_locks{producer_mutex_, consumer_mutex_};
             const auto cancelled = pending_from_state(
                 queue_state_.load(std::memory_order_acquire));
+            detail::helgrind_happens_after(&queue_state_);
             auto remaining = cancelled;
             while (remaining != 0)
             {
@@ -596,6 +630,7 @@ namespace vosp::async
 
             if (cancelled != 0)
             {
+                detail::helgrind_happens_before(&queue_state_);
                 queue_state_.fetch_sub(cancelled, std::memory_order_release);
                 if (active_from_state(queue_state_.load(std::memory_order_acquire)) == 0)
                     notify_idle_waiters();

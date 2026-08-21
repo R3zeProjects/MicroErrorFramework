@@ -183,3 +183,11 @@ GitHub Actions additionally defines reproducible jobs for:
 Coverage is intentionally a diagnostic signal, not a sole quality target:
 concurrency correctness is checked separately by ThreadSanitizer, stress tests
 and the lifecycle-focused unit tests.
+
+The WorkerPool uses C++ atomic/futex synchronization. Helgrind's own manual
+documents that custom atomic/futex primitives require `ANNOTATE_*` client
+requests; the Valgrind job therefore enables `ENABLE_HELGRIND_ANNOTATIONS`.
+Those annotations describe the same happens-before edges used by the C++ memory
+model and are disabled in normal builds. ThreadSanitizer remains the independent
+race-detection gate. See the
+[Helgrind manual](https://valgrind.org/docs/manual/hg-manual.html).

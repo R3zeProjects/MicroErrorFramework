@@ -16,6 +16,10 @@ find_package(Threads REQUIRED)
 
 option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer" OFF)
+option(ENABLE_HELGRIND_ANNOTATIONS
+    "Describe atomic queue synchronization to Valgrind Helgrind"
+    OFF
+)
 option(ENABLE_COVERAGE "Enable source coverage instrumentation" OFF)
 option(BUILD_BENCHMARKS "Build microbenchmarks" OFF)
 option(BUILD_FUZZERS "Build Clang LibFuzzer targets" OFF)
@@ -70,6 +74,10 @@ target_include_directories(MicroErrorSystemHeaders
 )
 target_compile_features(MicroErrorSystemHeaders INTERFACE cxx_std_23)
 target_link_libraries(MicroErrorSystemHeaders INTERFACE Threads::Threads)
+if(ENABLE_HELGRIND_ANNOTATIONS)
+    target_compile_definitions(MicroErrorSystemHeaders
+        INTERFACE VOSP_ENABLE_HELGRIND_ANNOTATIONS=1)
+endif()
 
 install(TARGETS MicroErrorSystemHeaders
     EXPORT vospTargets
