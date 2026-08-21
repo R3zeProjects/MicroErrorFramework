@@ -1,6 +1,20 @@
 name: Performance regression
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'include/**'
+      - 'benchmarks/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/performance.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'include/**'
+      - 'benchmarks/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/performance.yml'
   workflow_dispatch:
     inputs:
       operations:
@@ -12,8 +26,8 @@ permissions:
   contents: read
 
 jobs:
-  compare-legacy:
-    name: v0.3 candidate vs v0.2.5 legacy
+  compare-baseline:
+    name: candidate vs v0.3.0-beta
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -21,10 +35,10 @@ jobs:
         uses: actions/checkout@v5
         with:
           path: candidate
-      - name: Checkout legacy baseline
+      - name: Checkout release baseline
         uses: actions/checkout@v5
         with:
-          ref: legacy/0.2.5-beta
+          ref: v0.3.0-beta
           path: baseline
       - name: Install build tools
         run: candidate/.github/scripts/install-apt-packages.sh ninja-build
@@ -36,17 +50,24 @@ jobs:
           cmake -G Ninja -S candidate -B candidate/build \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_BENCHMARKS=ON
           cmake --build candidate/build --parallel
-      - name: Run five alternating samples
+      - name: Run seven alternating samples
         env:
-          OPERATIONS: ${{ inputs.operations }}
+          OPERATIONS: ${{ inputs.operations || '200000' }}
         run: |
-          for sample in 1 2 3 4 5; do
-            baseline/build/MicroErrorSystemProductionBenchmark \
+          for sample in 1 2 3 4 5 6 7; do
+            if (( sample % 2 )); then
+              first=baseline
+              second=candidate
+            else
+              first=candidate
+              second=baseline
+            fi
+            "$first/build/MicroErrorSystemProductionBenchmark" \
               --profile=full --operations="$OPERATIONS" \
-              --csv="baseline-$sample.csv" >/dev/null
-            candidate/build/MicroErrorSystemProductionBenchmark \
+              --csv="$first-$sample.csv" >/dev/null
+            "$second/build/MicroErrorSystemProductionBenchmark" \
               --profile=full --operations="$OPERATIONS" \
-              --csv="candidate-$sample.csv" >/dev/null
+              --csv="$second-$sample.csv" >/dev/null
           done
       - name: Compare medians and enforce target
         run: >-
@@ -54,7 +75,9 @@ jobs:
           --baseline 'baseline-*.csv'
           --candidate 'candidate-*.csv'
           --output comparison.md
-          --minimum-dispatch-gain 70
+          --minimum-dispatch-gain 3
+          --maximum-dispatch-scenario-regression 25
+          --maximum-subsystem-regression 12.5
       - name: Upload raw evidence
         uses: actions/upload-artifact@v4
         with:

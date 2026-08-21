@@ -430,8 +430,6 @@ namespace vosp::async
             current_worker_pool_ = this;
             while (true)
             {
-                std::array<std::optional<TaskItem>, bulk_claim_size_> batch;
-                std::size_t claimed = 0;
                 auto state = queue_state_.load(std::memory_order_acquire);
                 while (pending_from_state(state) == 0 && !is_stopping_state(state))
                 {
@@ -450,38 +448,57 @@ namespace vosp::async
                     return;
                 }
 
+                std::optional<TaskItem> item;
+                std::unique_lock consumer_lock{consumer_mutex_};
+                state = queue_state_.load(std::memory_order_acquire);
+                if (pending_from_state(state) == 0)
+                    continue;
+                detail::helgrind_happens_after(&queue_state_);
+                if (tasks_[queue_head_]->bulk)
                 {
-                    const std::lock_guard consumer_lock{consumer_mutex_};
-                    state = queue_state_.load(std::memory_order_acquire);
-                    if (pending_from_state(state) == 0)
-                    {
-                        continue;
-                    }
-
-                    detail::helgrind_happens_after(&queue_state_);
-                    const bool claim_bulk = tasks_[queue_head_]->bulk;
-                    const auto limit = claim_bulk
-                        ? std::min(bulk_claim_size_, pending_from_state(state))
-                        : std::size_t{1};
-                    while (claimed < limit &&
-                           tasks_[queue_head_]->bulk == claim_bulk)
-                    {
-                        batch[claimed].emplace(std::move(*tasks_[queue_head_]));
-                        tasks_[queue_head_].reset();
-                        queue_head_ = next_queue_index(queue_head_);
-                        ++claimed;
-                    }
-                    detail::helgrind_happens_before(&queue_state_);
-                    queue_state_.fetch_add(
-                        claimed * (active_unit_ - 1), std::memory_order_acq_rel);
+                    process_bulk(stop_token, std::move(consumer_lock), state);
+                    continue;
                 }
+                item.emplace(std::move(*tasks_[queue_head_]));
+                tasks_[queue_head_].reset();
+                queue_head_ = next_queue_index(queue_head_);
+                detail::helgrind_happens_before(&queue_state_);
+                queue_state_.fetch_add(active_unit_ - 1, std::memory_order_acq_rel);
+                consumer_lock.unlock();
 
                 if (waiting_producers_.load(std::memory_order_relaxed) != 0)
                     queue_state_.notify_one();
-                for (std::size_t index = 0; index < claimed; ++index)
-                    execute(*batch[index], stop_token, false);
-                finish_tasks(claimed);
+                execute(*item, stop_token, false);
+                finish_task();
             }
+        }
+
+        void process_bulk(
+            std::stop_token stop_token,
+            std::unique_lock<std::mutex> consumer_lock,
+            std::size_t state)
+        {
+            std::array<std::optional<TaskItem>, bulk_claim_size_> batch;
+            std::size_t claimed = 0;
+            const auto limit = std::min(
+                bulk_claim_size_, pending_from_state(state));
+            while (claimed < limit && tasks_[queue_head_]->bulk)
+            {
+                batch[claimed].emplace(std::move(*tasks_[queue_head_]));
+                tasks_[queue_head_].reset();
+                queue_head_ = next_queue_index(queue_head_);
+                ++claimed;
+            }
+            detail::helgrind_happens_before(&queue_state_);
+            queue_state_.fetch_add(
+                claimed * (active_unit_ - 1), std::memory_order_acq_rel);
+            consumer_lock.unlock();
+
+            if (waiting_producers_.load(std::memory_order_relaxed) != 0)
+                queue_state_.notify_one();
+            for (std::size_t index = 0; index < claimed; ++index)
+                execute(*batch[index], stop_token, false);
+            finish_tasks(claimed);
         }
 
         void execute(

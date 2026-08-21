@@ -4,6 +4,10 @@
 
 int main()
 {
+    static_assert(vosp::version::major == 0);
+    static_assert(vosp::version::minor == 3);
+    static_assert(vosp::version::patch == 1);
+
     vosp::error::MemoryRegister<vosp::error::Category::NETWORK> errors;
     const vosp::error::Error error{
         vosp::error::Category::NETWORK,

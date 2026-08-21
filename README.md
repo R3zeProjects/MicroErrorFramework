@@ -7,7 +7,7 @@
 > выбираются compile-time политиками.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.3.0--beta-orange)
+![API](https://img.shields.io/badge/API-0.3.1--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -48,7 +48,25 @@ beta-версии. Новый код должен использовать ед�
 - компилятор C++23;
 - стандартная библиотека с `std::expected`, `std::jthread` и `std::stop_token`.
 
-## Результаты оптимизации 0.3.0-beta
+## Результаты оптимизации
+
+### Патч 0.3.1-beta
+
+Разделение скалярного и группового пути извлечения задач убрало подготовку
+16 временных слотов из обычного `dispatch()`. Публичный API, backpressure,
+отмена и семантика shutdown не изменились.
+
+| Среда | Dispatch, среднее геометрическое | WorkerPool целиком |
+| --- | ---: | ---: |
+| Windows 10, Ryzen 7 PRO 1700X, Clang 22, 7 чередующихся запусков | **+15,3%** | **+9,7%** |
+| GitHub Actions, Ubuntu, 7 чередующихся запусков | **+9,3%** | **+6,0%** |
+
+Performance Action автоматически сравнивает ветку с неизменяемым тегом
+`v0.3.0-beta`, сохраняет исходные CSV как artifact и отклоняет широкую
+регрессию подсистемы или чрезмерное падение отдельного scalar-сценария.
+Подробности: [сравнение патча 0.3.1](benchmark-results/v0.3.0-v0.3.1-worker-comparison-2026-08-21.md).
+
+### Версия 0.3.0-beta
 
 Сравнение выполнено с точной старой версией из ветки
 `legacy/0.2.5-beta`: пять независимых Release-запусков по 200 000 операций на
@@ -64,7 +82,6 @@ beta-версии. Новый код должен использовать ед�
 
 Async logger уменьшил измеренный объём аллокаций на 19,4%. Полный отчёт:
 [сравнение 0.2.5 и 0.3.0](benchmark-results/v0.2.5-v0.3.0-worker-comparison-2026-08-21.md).
-Manual Performance Action повторяет сравнение на Linux и требует минимум 70%.
 
 ## Подключение
 
@@ -75,7 +92,7 @@ Manual Performance Action повторяет сравнение на Linux и т
 После установки CMake package:
 
 ```cmake
-find_package(vosp 0.3.0 CONFIG REQUIRED)
+find_package(vosp 0.3.1 CONFIG REQUIRED)
 target_link_libraries(my_target PRIVATE vosp::vosp)
 ```
 
