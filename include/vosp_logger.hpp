@@ -302,7 +302,7 @@ namespace vosp::logger
     template<LoggerPolicy Policy = AcceptAllPolicy,
              LoggerDispatchPolicy Dispatch = SerializedSinkDispatch,
              LoggerMetadataPolicy Metadata = FullMetadataPolicy>
-    class PolicyLogger : public ILogger
+    class Logger : public ILogger
     {
     private:
         struct SinkSlot
@@ -312,14 +312,14 @@ namespace vosp::logger
         };
 
     public:
-        PolicyLogger() = default;
+        Logger() = default;
 
         /**
          * @brief Creates a logger with an initial set of sinks.
          * @param sinks Sinks that must outlive all calls that can reach them.
          */
         template<SinkType... Sinks>
-        explicit PolicyLogger(Sinks&... sinks)
+        explicit Logger(Sinks&... sinks)
         {
             (static_cast<void>(attach_slot(SinkSlot{&sinks, {}})), ...);
         }
@@ -329,7 +329,7 @@ namespace vosp::logger
          * @param sink Shared sink lifetime retained by this logger.
          */
         template<SinkType Sink>
-        explicit PolicyLogger(std::shared_ptr<Sink> sink)
+        explicit Logger(std::shared_ptr<Sink> sink)
         {
             if (sink)
             {
@@ -517,32 +517,32 @@ namespace vosp::logger
     };
 
     /**
-     * @brief Asynchronous specialization of PolicyLogger with bounded backpressure.
+     * @brief Asynchronous specialization of Logger with bounded backpressure.
      * @note write() reports queue acceptance; sink failures are exposed separately.
      */
     template<LoggerPolicy Policy, LoggerMetadataPolicy Metadata>
-    class PolicyLogger<Policy, AsyncSinkDispatch, Metadata> : public ILogger
+    class Logger<Policy, AsyncSinkDispatch, Metadata> : public ILogger
     {
     public:
-        PolicyLogger()
+        Logger()
             : worker_([this](std::stop_token) { run(); })
         {
         }
 
         template<SinkType... Sinks>
-        explicit PolicyLogger(Sinks&... sinks)
+        explicit Logger(Sinks&... sinks)
             : backend_(sinks...), worker_([this](std::stop_token) { run(); })
         {
         }
 
         template<SinkType Sink>
-        explicit PolicyLogger(std::shared_ptr<Sink> sink)
+        explicit Logger(std::shared_ptr<Sink> sink)
             : backend_(std::move(sink)), worker_([this](std::stop_token) { run(); })
         {
         }
 
-        PolicyLogger(const PolicyLogger&) = delete;
-        PolicyLogger& operator=(const PolicyLogger&) = delete;
+        Logger(const Logger&) = delete;
+        Logger& operator=(const Logger&) = delete;
 
         [[nodiscard]] bool attach(ILogSink& sink) override { return backend_.attach(sink); }
         [[nodiscard]] bool attach(std::shared_ptr<ILogSink> sink)
@@ -589,7 +589,7 @@ namespace vosp::logger
             }
         }
 
-        ~PolicyLogger() noexcept override { shutdown(); }
+        ~Logger() noexcept override { shutdown(); }
 
     private:
         struct PendingRecord
@@ -669,7 +669,7 @@ namespace vosp::logger
             }
         }
 
-        PolicyLogger<Policy, ParallelSinkDispatch, Metadata> backend_;
+        Logger<Policy, ParallelSinkDispatch, Metadata> backend_;
         mutable std::mutex mutex_;
         std::condition_variable records_available_;
         std::condition_variable space_available_;
@@ -689,25 +689,13 @@ namespace vosp::logger
     template<LoggerPolicy Filter = logger_policy::AcceptAll,
              LoggerDispatchPolicy Dispatch = logger_policy::Serialized,
              LoggerMetadataPolicy Metadata = logger_policy::FullMetadata>
-    class Logger final : public PolicyLogger<Filter, Dispatch, Metadata>
-    {
-        using Base = PolicyLogger<Filter, Dispatch, Metadata>;
-
-    public:
-        using Base::Base;
-    };
-
-    template<SinkType... Sinks>
-    Logger(Sinks&...) -> Logger<>;
-
-    template<SinkType Sink>
-    Logger(std::shared_ptr<Sink>) -> Logger<>;
+    using PolicyLogger = Logger<Filter, Dispatch, Metadata>;
 
     /**
      * @brief High-throughput logger for sinks with thread-safe write implementations.
      * @note Unlike Logger, concurrent calls may enter an attached sink simultaneously.
      */
-    using ParallelLogger = PolicyLogger<AcceptAllPolicy, ParallelSinkDispatch>;
+    using ParallelLogger = Logger<AcceptAllPolicy, ParallelSinkDispatch>;
 
     namespace detail
     {
@@ -755,13 +743,31 @@ namespace vosp::logger
         }
     }
 
+    namespace sink_policy
+    {
+        /** @brief Selects immediate synchronized stream writes. */
+        struct Immediate
+        {
+        };
+
+        /** @brief Selects producer-local buffering with explicit flush support. */
+        struct Buffered
+        {
+        };
+    }
+
+    /** @brief Unified stream sink selected by an output policy. */
+    template<typename Policy = sink_policy::Immediate>
+    class Sink;
+
     /**
      * @brief Thread-safe text sink writing one record per line.
      */
-    class ConsoleSink : public ILogSink
+    template<>
+    class Sink<sink_policy::Immediate> final : public ILogSink
     {
     public:
-        explicit ConsoleSink(std::ostream& output) noexcept
+        explicit Sink(std::ostream& output) noexcept
             : output_(output)
         {
         }
@@ -813,7 +819,8 @@ namespace vosp::logger
      * @note A successful buffered write means that the record was accepted. Call
      * flush() to observe the final stream state and make buffered records visible.
      */
-    class BufferedStreamSink : public ILogSink
+    template<>
+    class Sink<sink_policy::Buffered> final : public ILogSink
     {
     public:
         /** @brief Default per-thread threshold before automatic stream output. */
@@ -824,7 +831,7 @@ namespace vosp::logger
          * @param flush_threshold Per-thread buffered bytes before automatic output.
          * @throws std::invalid_argument if flush_threshold is zero.
          */
-        explicit BufferedStreamSink(
+        explicit Sink(
             std::ostream& output,
             std::size_t flush_threshold = default_flush_threshold)
             : output_(output),
@@ -837,13 +844,13 @@ namespace vosp::logger
             }
         }
 
-        BufferedStreamSink(const BufferedStreamSink&) = delete;
-        BufferedStreamSink& operator=(const BufferedStreamSink&) = delete;
-        BufferedStreamSink(BufferedStreamSink&&) = delete;
-        BufferedStreamSink& operator=(BufferedStreamSink&&) = delete;
+        Sink(const Sink&) = delete;
+        Sink& operator=(const Sink&) = delete;
+        Sink(Sink&&) = delete;
+        Sink& operator=(Sink&&) = delete;
 
         /** @brief Flushes remaining records without throwing during destruction. */
-        ~BufferedStreamSink() noexcept override
+        ~Sink() noexcept override
         {
             try
             {
@@ -981,36 +988,11 @@ namespace vosp::logger
         inline static std::atomic<std::uint64_t> next_instance_id_ = 1;
     };
 
-    namespace sink_policy
-    {
-        /** @brief Selects immediate synchronized stream writes. */
-        struct Immediate
-        {
-        };
+    /** @brief Compatibility alias for the original immediate sink name. */
+    using ConsoleSink = Sink<sink_policy::Immediate>;
 
-        /** @brief Selects producer-local buffering with explicit flush support. */
-        struct Buffered
-        {
-        };
-    }
-
-    /** @brief Unified stream sink selected by an output policy. */
-    template<typename Policy = sink_policy::Immediate>
-    class Sink;
-
-    template<>
-    class Sink<sink_policy::Immediate> final : public ConsoleSink
-    {
-    public:
-        using ConsoleSink::ConsoleSink;
-    };
-
-    template<>
-    class Sink<sink_policy::Buffered> final : public BufferedStreamSink
-    {
-    public:
-        using BufferedStreamSink::BufferedStreamSink;
-    };
+    /** @brief Compatibility alias for the original buffered sink name. */
+    using BufferedStreamSink = Sink<sink_policy::Buffered>;
 
     Sink(std::ostream&) -> Sink<sink_policy::Immediate>;
     Sink(std::ostream&, std::size_t) -> Sink<sink_policy::Buffered>;

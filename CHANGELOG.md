@@ -5,6 +5,8 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.2.0-beta] - 2026-08-21
+
 ### Added
 
 - Unified policy-based `Register`, `System`, `Sink`, `Logger`, and `WorkerPool`
@@ -15,6 +17,9 @@ the version policy described in `docs/API_CONTRACTS.md`.
 - Public-state fuzz transitions covering valid, missing and malformed categories,
   duplicate operations, removal and messages up to 16 KiB.
 - Async logger end-to-end and memory-footprint production benchmark scenarios.
+- Opt-in legacy-versus-unified API benchmark proving that compatibility aliases
+  add no object-size or runtime overhead; benchmark targets remain excluded from
+  installed packages.
 - Repository-local GCC, Clang, MSVC, TSan, LibFuzzer, Valgrind and clang-tidy CI.
 - Scheduled production matrix and configurable multi-hour soak workflow.
 - Public API, ownership, blocking and thread-safety contracts.
@@ -23,6 +28,8 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 - Documentation now leads with the unified API; the original specialized names
   remain compatibility aliases during the beta migration.
+- `Logger` and policy-selected `Sink` are now the implementation types; the
+  original logger and sink names are zero-overhead compatibility aliases.
 - Windows deterministic sanitizer fuzz documentation now uses RelWithDebInfo to
   avoid mixing dynamic Clang ASan with the Microsoft Debug CRT.
 
