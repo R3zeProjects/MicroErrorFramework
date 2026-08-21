@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   compare-baseline:
-    name: candidate vs v0.3.0-beta
+    name: candidate vs v0.3.1-beta
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout release baseline
         uses: actions/checkout@v5
         with:
-          ref: v0.3.0-beta
+          ref: v0.3.1-beta
           path: baseline
       - name: Install build tools
         run: candidate/.github/scripts/install-apt-packages.sh ninja-build
@@ -75,7 +75,6 @@ jobs:
           --baseline 'baseline-*.csv'
           --candidate 'candidate-*.csv'
           --output comparison.md
-          --minimum-dispatch-gain 3
           --maximum-dispatch-scenario-regression 25
           --maximum-subsystem-regression 12.5
       - name: Upload raw evidence

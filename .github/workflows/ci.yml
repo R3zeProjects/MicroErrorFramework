@@ -118,7 +118,7 @@ jobs:
       - name: Verify version and package boundary
         shell: bash
         run: |
-          grep -F 'set(PACKAGE_VERSION "0.3.1")' \
+          grep -F 'set(PACKAGE_VERSION "0.4.0")' \
             install/lib/cmake/vosp/vospConfigVersion.cmake
           if find install -type f \
             \( -iname '*benchmark*' -o -iname '*test*' \
