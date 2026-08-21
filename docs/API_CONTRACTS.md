@@ -2,7 +2,7 @@
 
 ## Status and compatibility
 
-The current release line is `0.2.x-beta`. The public API is every declaration
+The current release line is `0.3.x-beta`. The public API is every declaration
 reachable from `include/vosp.hpp`; implementation details under `detail` are not
 public. Before 1.0, minor releases may change source compatibility when the
 change is recorded in `CHANGELOG.md`. Patch releases remain source compatible:
@@ -14,7 +14,7 @@ so all consumers must rebuild after an upgrade. A 1.0 release requires a
 documented API freeze, green supported-compiler CI, Linux concurrency gates and
 release-candidate soak evidence.
 
-## Stable 0.2.x source contracts
+## Stable 0.3.x source contracts
 
 - `<vosp.hpp>` is the umbrella source entry point in both the source tree and
   the installed package.
@@ -101,6 +101,9 @@ have not started. Active tasks do not consume queue slots.
   `failed_dispatches()`.
 - `dispatch_bulk()` moves accepted callbacks and returns early with the accepted
   count if shutdown begins.
+- `dispatch_bulk()` work may be claimed by a worker in chunks of at most 16.
+  Once a chunk is claimed it is active and is not removed by `clear_queue()`;
+  callbacks still execute individually and failures are counted individually.
 - The pool takes ownership of a callable only after successful enqueue.
 
 ### Cancellation and shutdown
@@ -116,8 +119,9 @@ have not started. Active tasks do not consume queue slots.
 - Calls to `shutdown()` are idempotent and may be concurrent.
 - A worker may signal shutdown; it never joins itself. Final joining and object
   destruction remain the owner's responsibility.
-- `wait()` blocks until both queued and active counts reach zero. It does not
-  initiate shutdown.
+- `wait()` blocks until both queued and active counts reach zero and tracked
+  futures for completed tasks have been made ready. It does not initiate
+  shutdown.
 
 `queue_storage_bytes()` reports reserved ring-slot storage only. Worker stacks,
 the pool object and heap allocations made by large callables are excluded.

@@ -29,6 +29,16 @@ build-production/MicroErrorSystemProductionBenchmark \
   --profile=full --csv=production-full.csv
 ```
 
+During focused iteration, select one subsystem without changing its scenarios:
+
+```text
+build-production/MicroErrorSystemProductionBenchmark \
+  --profile=full --suite=worker --operations=200000 --csv=worker.csv
+```
+
+Supported suite values are `all`, `logger`, `worker`, and `register`. The
+default is `all`; the soak profile intentionally runs every subsystem.
+
 Run a 60-second soak for each subsystem:
 
 ```text
@@ -73,6 +83,12 @@ the compiler's ASan runtime directory in `PATH`.
 - static `Error`/`LogEntry`, worker queue, and async record allocation metrics.
 
 ## Latest full result
+
+The latest version-to-version WorkerPool result is documented in
+[BENCHMARKS.md](BENCHMARKS.md) and the generated
+[0.2.5-to-0.3.0 report](../benchmark-results/v0.2.5-v0.3.0-worker-comparison-2026-08-21.md).
+The table below remains the complete 2026-08-18 production matrix so historical
+results are not silently rewritten.
 
 The 2026-08-18 production-candidate Release run completed 100 scenarios.
 Selected boundary results:

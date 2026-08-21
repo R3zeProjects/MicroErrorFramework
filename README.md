@@ -10,7 +10,7 @@ particular operating system or domain.
 > **Main idea:** an error-control and logging contour independent of the host system.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.2.5--beta-orange)
+![API](https://img.shields.io/badge/API-0.3.0--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -51,9 +51,12 @@ All values below are real local Release measurements, not theoretical claims.
 | Typed register | 100,000 single-threaded inserts | **4.62022M operations/s** |
 | Concurrent category routing | 99,999 inserts over 3 workers | **5.89096M operations/s** |
 | Asynchronous error system | 1,000 completed operations | **923,361 operations/s** |
-| Tracked worker tasks | `submit()`, 4 workers | **514,838 tasks/s** |
-| Fire-and-forget tasks | `dispatch()`, 4 workers | **3.01123M tasks/s** |
-| Grouped task submission | `dispatch_bulk()`, 4 workers | **3.44851M tasks/s** |
+| Tracked worker tasks | `submit()`, 4 workers | **1.74017M tasks/s** |
+| Fire-and-forget tasks | `dispatch()`, q64, 4 producers / 4 workers | **2.86402M tasks/s** |
+| Grouped task submission | `dispatch_bulk()`, 4 workers | **9.62330M tasks/s** |
+| Worker dispatch gain | 20-scenario geometric mean vs `v0.2.5-beta` | **+93.1%** |
+| Bulk dispatch gain | Same machine and harness vs `v0.2.5-beta` | **+225.2%** |
+| Async queue allocation bytes | 200,000 records vs `v0.2.5-beta` | **−19.4%** |
 | Logger dispatch | Prepared records, 1 thread | **20.6567M records/s** |
 | Sharded logger dispatch | Prepared records, 4 workers | **71.1305M records/s** |
 | Owned-record formatting | Equal-output formatting, 1 thread | **5.75945M records/s** |
@@ -66,16 +69,16 @@ All values below are real local Release measurements, not theoretical claims.
 Verification results:
 
 ```text
-Native unit/stress/contract CTest     5/5 passed
+Clang Release CTest                  11/11 passed
 Production benchmark smoke            1/1 passed
-MSVC Release CTest                    6/6 passed
+MSVC Release CTest                   11/11 passed
 nlohmann/json external CTest          6/6 passed
 fmt + cpp-httplib local CTest         5/5 passed
 Windows sanitizer fuzz smoke        100,000 inputs passed
 ```
 
 The benchmark machine was an AMD Ryzen 7 PRO 1700X with 8 physical cores,
-16 logical processors, 31.95 GiB RAM, Windows 10 Pro, and Clang 22.1.8.
+16 logical processors, 31.95 GiB RAM, Windows 10 Pro, and Clang 22.1.6.
 Detailed methodology and raw measurement ranges are available in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Exact median/minimum/maximum values
 for the latest full run are in
@@ -95,6 +98,13 @@ mutex. `ParallelSinkDispatch` removes callback serialization for thread-safe
 sinks, while `MinimalMetadataPolicy` omits timestamp and thread-id collection.
 The same `Logger` therefore covers safe, parallel, and latency-oriented
 modes without a separate fast-logger class. Throughput remains machine-dependent.
+
+The `0.3.0-beta` comparison uses five independent Release runs per revision,
+200,000 operations per worker scenario, and the exact `v0.2.5-beta` source from
+the `legacy/0.2.5-beta` branch. The raw medians and scenario deltas are recorded
+in [the version comparison](benchmark-results/v0.2.5-v0.3.0-worker-comparison-2026-08-21.md).
+The manual Performance regression Action repeats the same comparison on Linux
+and enforces a 70% geometric-mean dispatch target.
 
 ## Architecture
 
@@ -547,7 +557,7 @@ not shipped as runtime dependencies.
 
 The project currently includes:
 
-- native Release unit/stress/contract tests: `4/4` passed;
+- current Clang and MSVC Release unit/stress/contract suites: `11/11` passed;
 - Release production benchmark smoke: `1/1` passed;
 - external integration tests: `4/4` passed;
 - local `fmt` + `cpp-httplib` integration: `4/4` passed;
@@ -582,7 +592,7 @@ MicroErrorFramework/
 
 ## Versioning
 
-The current release is **`0.2.5-beta`**. The numeric API version follows this
+The current release is **`0.3.0-beta`**. The numeric API version follows this
 project policy:
 
 - `x.0.0` — a complete system redesign or stable generation release;
@@ -594,7 +604,7 @@ first stable generation.
 
 ## Current limitations
 
-- The API is version `0.2.5-beta` and may evolve before `1.0.0`.
+- The API is version `0.3.0-beta` and may evolve before `1.0.0`.
 - Error systems reference externally owned registers; logger sinks are either
   non-owning references or logger-owned `std::shared_ptr` instances.
 - A running worker task cannot be forcefully interrupted safely.
@@ -613,6 +623,7 @@ first stable generation.
 - [Unified API migration](docs/API_MIGRATION.md)
 - [Benchmark report](docs/BENCHMARKS.md)
 - [External workload validation](docs/EXTERNAL_WORKLOADS.md)
+- [MESLS R1.2 reference audit](docs/MESLS_REFERENCE_AUDIT.md)
 - [API guide](docs/README.en.md)
 - [Changelog](CHANGELOG.md)
 

@@ -5,6 +5,34 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.3.0-beta] - 2026-08-21
+
+### Changed
+
+- Reworked `WorkerPool` around independent producer/consumer queue ends,
+  `std::atomic::wait` backpressure, packed pending/active state and epoch-based
+  idle notification.
+- Added bounded 16-callback claiming for bulk dispatch while retaining scalar
+  cancellation semantics and individual failure accounting.
+- Replaced the async logger deque with two pre-reserved vector queues swapped
+  between producers and the backend consumer.
+- Strengthened `wait()` so completion includes readiness of tracked futures.
+
+### Performance
+
+- Reached a 93.1% geometric-mean WorkerPool dispatch gain over `v0.2.5-beta`
+  across the 20-scenario queue/producer/worker matrix on the documented local
+  Release setup; native bulk dispatch improved by 225.2%.
+- Reduced observed async logger allocation bytes by 19.4% for the 200,000-record
+  allocation workload.
+
+### Validation
+
+- Added repeatable legacy-versus-candidate comparison tooling and a manual
+  GitHub Actions gate with raw CSV artifacts and a 70% dispatch target.
+- Extended WorkerPool stress coverage for repeated waits and tracked-future
+  readiness, and added WorkerPool Helgrind execution.
+
 ## [0.2.5-beta] - 2026-08-21
 
 ### CI
