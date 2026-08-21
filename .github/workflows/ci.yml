@@ -241,7 +241,7 @@ jobs:
           valgrind --tool=helgrind --fair-sched=yes --error-exitcode=1 \
             ./build/MicroErrorSystemLoggerTests
           valgrind --tool=helgrind --fair-sched=yes --error-exitcode=1 \
-            ./build/MicroErrorSystemWorkerPoolStressTests
+            ./build/MicroErrorSystemWorkerPoolHelgrindTests
 
   static-analysis:
     name: Linux clang-tidy

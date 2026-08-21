@@ -274,6 +274,13 @@ if(BUILD_TESTING)
         PRIVATE MicroErrorSystemHeaders
     )
 
+    add_executable(MicroErrorSystemWorkerPoolHelgrindTests
+        tests/vosp_worker_pool_helgrind_tests.cpp
+    )
+    target_link_libraries(MicroErrorSystemWorkerPoolHelgrindTests
+        PRIVATE MicroErrorSystemHeaders
+    )
+
     add_executable(MicroErrorSystemConcurrencyContractTests
         tests/vosp_concurrency_contract_tests.cpp
     )
