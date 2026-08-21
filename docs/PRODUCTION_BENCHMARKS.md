@@ -120,6 +120,28 @@ Exception throughput includes C++ exception unwinding and diagnostic creation;
 snapshot throughput includes copying all 1,024 owned `Error` values. Results are
 not claims about filesystem or network logging latency.
 
+The independent Ubuntu GitHub Actions run on the same commit also completed
+seven alternating samples against `v0.3.1-beta` and passed every performance
+gate. Its candidate-only medians were:
+
+| Scenario | Producers | Linux CI median throughput |
+| --- | ---: | ---: |
+| `attempt()` success | 1 / 4 | 67.41M / 74.34M ops/s |
+| `attempt()` exception conversion | 1 | 1.33M ops/s |
+| `capture()` success, no sink write | 1 / 4 | 61.32M / 69.08M ops/s |
+| `capture()` exception and log | 1 / 4 | 1.27M / 2.58M ops/s |
+| successful / failed `Result<T>` | 4 | 277.16M / 30.53M ops/s |
+| `contains(code)` / owning `find(code)` | 8 | 21.50M / 16.03M ops/s |
+| `remove(code)` | 8 | 8.69M ops/s |
+| owning snapshot of 1,024 errors | 1 / 4 | 193,173 / 127,797 snapshots/s |
+
+For common scenarios, geometric-mean changes were register **+47.0%**, logger
+**+2.3%**, sink **+1.1%**, worker **-1.5%**, and measured async-memory
+throughput **-2.3%**. Worker dispatch was **-3.7%** geometrically; its worst
+individual scenario was **-18.3%**, within the configured 25% per-scenario and
+12.5% subsystem gates. Raw CSV and the complete comparison are attached to
+[Performance run 32510315619](https://github.com/R3zeProjects/MicroErrorFramework/actions/runs/32510315619).
+
 The latest version-to-version WorkerPool result is documented in
 [BENCHMARKS.md](BENCHMARKS.md) and the generated
 [0.2.5-to-0.3.0 report](../benchmark-results/v0.2.5-v0.3.0-worker-comparison-2026-08-21.md).
