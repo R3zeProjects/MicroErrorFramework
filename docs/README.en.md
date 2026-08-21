@@ -281,11 +281,13 @@ Result<int> rows = logger.capture(
     Error{Category::DATABASE, 2001, "database query"},
     [] { return run_database_query(); });
 
-logger.error(rows); // no-op on success; logs rows.error() on failure
+Result<int> request = perform_request();
+logger.error(request); // no-op on success; logs request.error() on failure
 ```
 
 Sink rejection or an exception thrown by a sink never replaces the operation
-error returned by `capture()`.
+error returned by `capture()`. Do not pass a failed `capture()` result to
+`logger.error()` unless duplicate publication is intentional.
 
 The default `Sink` writes every record immediately. For a shared stream with
 several producers, select the buffered sink policy:
