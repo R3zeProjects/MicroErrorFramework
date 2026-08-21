@@ -5,6 +5,15 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.2.5-beta] - 2026-08-21
+
+### CI
+
+- Added a dedicated public API contract gate that runs positive, negative and
+  compile-fail contract tests independently of benchmarks.
+- Updated the installed-package gate to enforce the exact `0.2.5` CMake package
+  version while continuing to reject test and benchmark artifacts.
+
 ## [0.2.4-beta] - 2026-08-21
 
 ### Documentation

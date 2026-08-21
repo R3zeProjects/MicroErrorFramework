@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MicroErrorSystem
-    VERSION 0.2.4
+    VERSION 0.2.5
     LANGUAGES CXX
 )
 
@@ -385,6 +385,7 @@ if(BUILD_TESTING)
         COMMAND MicroErrorSystemNegativeApiTests
     )
     set_tests_properties(
+        MicroErrorSystem.Tests
         MicroErrorSystem.UnifiedApiTests
         MicroErrorSystem.NegativeApiTests
         PROPERTIES LABELS "api-contract"
