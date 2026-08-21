@@ -78,7 +78,7 @@ jobs:
           --maximum-dispatch-scenario-regression 25
           --maximum-subsystem-regression 12.5
       - name: Upload raw evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: version-performance-${{ github.run_id }}
           path: |

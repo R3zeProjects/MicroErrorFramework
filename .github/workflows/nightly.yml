@@ -46,7 +46,7 @@ jobs:
           ./build/MicroErrorSystemProductionBenchmark \
             --profile=soak --duration="$seconds" --csv=production-soak.csv
       - name: Upload raw results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: production-soak-${{ github.run_id }}
           path: |
