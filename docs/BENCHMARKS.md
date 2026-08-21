@@ -188,6 +188,9 @@ The WorkerPool uses C++ atomic/futex synchronization. Helgrind's own manual
 documents that custom atomic/futex primitives require `ANNOTATE_*` client
 requests; the Valgrind job therefore enables `ENABLE_HELGRIND_ANNOTATIONS`.
 Those annotations describe the same happens-before edges used by the C++ memory
-model and are disabled in normal builds. ThreadSanitizer remains the independent
-race-detection gate. See the
+model and are disabled in normal builds. The dedicated Helgrind workload avoids
+`std::future` because Helgrind does not model libstdc++ future shared-state
+synchronization. It still exercises concurrent producers, bounded backpressure,
+scalar and bulk dispatch, waiting, and draining. ThreadSanitizer independently
+checks the complete pool, including futures, cancellation, and shutdown. See the
 [Helgrind manual](https://valgrind.org/docs/manual/hg-manual.html).
