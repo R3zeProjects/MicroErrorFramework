@@ -67,7 +67,10 @@ CTest использует label `api-contract`, а compile-fail cases допо�
 WorkerPool использует C++ atomic/futex synchronization. В Valgrind job включён
 `ENABLE_HELGRIND_ANNOTATIONS`, потому что Helgrind требует явного описания
 custom happens-before edges. В обычных сборках эти annotations отключены;
-независимым race gate остаётся ThreadSanitizer.
+отдельная Helgrind-нагрузка проверяет concurrent producers, backpressure,
+scalar/bulk dispatch, wait и drain без `std::future`, синхронизацию которого
+Helgrind в libstdc++ не моделирует. Полные сценарии с futures, cancellation и
+shutdown независимо проверяет ThreadSanitizer.
 
 ## WorkerPool
 

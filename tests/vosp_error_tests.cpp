@@ -613,7 +613,7 @@ namespace
             });
 
         const auto self_shutdown_result = self_shutdown.get();
-        // A worker can only signal shutdown; the owner performs the final join.
+        // Worker только сигнализирует shutdown; финальный join выполняет владелец.
         self_shutdown_pool.shutdown();
 
         return check(self_shutdown_result.has_value(), "worker initiated shutdown") &&
