@@ -612,7 +612,11 @@ namespace
                 return {};
             });
 
-        return check(self_shutdown.get().has_value(), "worker initiated shutdown") &&
+        const auto self_shutdown_result = self_shutdown.get();
+        // A worker can only signal shutdown; the owner performs the final join.
+        self_shutdown_pool.shutdown();
+
+        return check(self_shutdown_result.has_value(), "worker initiated shutdown") &&
                check(self_shutdown_pool.is_stopping(), "worker pool reports stopping") &&
                check(self_shutdown_pool.active_tasks() == 0,
                      "worker pool reports no active tasks") &&
