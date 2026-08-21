@@ -76,6 +76,46 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  installed-package:
+    name: Linux installed package contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install toolchain
+        run: .github/scripts/install-apt-packages.sh ninja-build
+      - name: Configure library-only package
+        run: >-
+          cmake -G Ninja -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=OFF
+          -DBUILD_BENCHMARKS=OFF
+      - name: Install package
+        run: cmake --install build --prefix "$PWD/install"
+      - name: Verify version and package boundary
+        shell: bash
+        run: |
+          grep -F 'set(PACKAGE_VERSION "0.2.0")' \
+            install/lib/cmake/vosp/vospConfigVersion.cmake
+          if find install -type f \
+            \( -iname '*benchmark*' -o -iname '*test*' \
+               -o -name '*.exe' -o -name '*.a' -o -name '*.so' \) \
+            -print -quit | grep -q .; then
+            echo 'Installed package contains development-only artifacts.' >&2
+            exit 1
+          fi
+      - name: Configure downstream consumer
+        run: >-
+          cmake -G Ninja
+          -S tests/package_consumer
+          -B consumer-build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="$PWD/install"
+      - name: Build and run downstream consumer
+        run: |
+          cmake --build consumer-build --parallel
+          ./consumer-build/vosp_package_consumer
+
   address-undefined-sanitizers:
     name: Linux Clang ASan and UBSan
     runs-on: ubuntu-latest
