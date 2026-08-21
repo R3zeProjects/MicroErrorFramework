@@ -41,7 +41,7 @@ def main() -> int:
     parser.add_argument("--candidate", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--minimum-dispatch-gain", type=float)
-    parser.add_argument("--maximum-worker-scenario-regression", type=float)
+    parser.add_argument("--maximum-dispatch-scenario-regression", type=float)
     parser.add_argument("--maximum-subsystem-regression", type=float)
     args = parser.parse_args()
 
@@ -73,9 +73,12 @@ def main() -> int:
         for subsystem, ratios in subsystem_ratios.items()
     }
     worst_key, _, _, worst_delta = min(rows, key=lambda row: row[3])
-    worker_rows = [row for row in rows if row[0][0] == "worker"]
-    worst_worker_key, _, _, worst_worker_delta = min(
-        worker_rows, key=lambda row: row[3]
+    dispatch_rows = [
+        row for row in rows
+        if row[0][0] == "worker" and row[0][1].startswith("dispatch_")
+    ]
+    worst_dispatch_key, _, _, worst_dispatch_delta = min(
+        dispatch_rows, key=lambda row: row[3]
     )
     worst_subsystem, worst_subsystem_gain = min(
         subsystem_gains.items(), key=lambda item: item[1]
@@ -118,12 +121,12 @@ def main() -> int:
             file=os.sys.stderr,
         )
         return 1
-    if (args.maximum_worker_scenario_regression is not None
-            and worst_worker_delta < -args.maximum_worker_scenario_regression):
+    if (args.maximum_dispatch_scenario_regression is not None
+            and worst_dispatch_delta < -args.maximum_dispatch_scenario_regression):
         print(
-            f"WorkerPool scenario {worst_worker_key} regressed by "
-            f"{worst_worker_delta:.1f}%; limit is "
-            f"-{args.maximum_worker_scenario_regression:.1f}%",
+            f"WorkerPool dispatch scenario {worst_dispatch_key} regressed by "
+            f"{worst_dispatch_delta:.1f}%; limit is "
+            f"-{args.maximum_dispatch_scenario_regression:.1f}%",
             file=os.sys.stderr,
         )
         return 1
