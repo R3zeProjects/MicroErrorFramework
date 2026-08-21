@@ -5,6 +5,15 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.2.4-beta] - 2026-08-21
+
+### Documentation
+
+- Defined the stable source, ownership, formatting, policy-selection and
+  compatibility contracts for the complete `0.2.x-beta` release line.
+- Documented the positive, negative and compile-fail tests that enforce the
+  public API boundary without changing runtime behavior.
+
 ## [0.2.3-beta] - 2026-08-21
 
 ### Added
