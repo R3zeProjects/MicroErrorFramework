@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MicroErrorSystem
-    VERSION 0.1.0
+    VERSION 0.2.0
     LANGUAGES CXX
 )
 
@@ -475,6 +475,14 @@ if(BUILD_BENCHMARKS)
         PRIVATE MicroErrorSystemHeaders
     )
     enable_sanitizers(MicroErrorSystemComparisonBenchmark)
+
+    add_executable(MicroErrorSystemApiSurfaceBenchmark
+        benchmarks/vosp_api_surface_benchmark.cpp
+    )
+    target_link_libraries(MicroErrorSystemApiSurfaceBenchmark
+        PRIVATE MicroErrorSystemHeaders
+    )
+    enable_sanitizers(MicroErrorSystemApiSurfaceBenchmark)
 
     if(BUILD_EXTERNAL_STRESS_TESTS)
         add_executable(MicroErrorSystemExternalBenchmark

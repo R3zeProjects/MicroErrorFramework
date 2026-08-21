@@ -7,7 +7,7 @@
 > выбираются compile-time политиками.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.1.0--beta-orange)
+![API](https://img.shields.io/badge/API-0.2.0--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
