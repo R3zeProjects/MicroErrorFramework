@@ -186,12 +186,40 @@ namespace vosp::error
         ~CategoryRegister() noexcept override = default;
     };
 
+    namespace register_policy
+    {
+        /** @brief Selects internal mutex protection for a register. */
+        struct ThreadSafe
+        {
+            using Mutex = std::mutex;
+        };
+
+        /** @brief Omits locking when all access is externally serialized. */
+        struct SingleThreaded
+        {
+            struct Mutex
+            {
+                constexpr void lock() const noexcept {}
+                constexpr void unlock() const noexcept {}
+            };
+        };
+    }
+
+    /** @brief Restricts a type to a register synchronization policy. */
+    template<typename Policy>
+    concept RegisterPolicy = requires
+    {
+        typename Policy::Mutex;
+    };
+
     /**
-     * @brief Thread-safe in-memory register for one error category.
+     * @brief Bounded in-memory register for one error category.
      * @tparam RegisterCategory Category handled by the register.
+     * @tparam Policy Internal synchronization policy.
      */
-    template<Category RegisterCategory>
-    class MemoryRegister final : public CategoryRegister<RegisterCategory>
+    template<Category RegisterCategory,
+             RegisterPolicy Policy = register_policy::ThreadSafe>
+    class Register final : public CategoryRegister<RegisterCategory>
     {
     public:
         /**
@@ -200,7 +228,7 @@ namespace vosp::error
          * @param capacity_limit Maximum number of errors retained by this instance.
          * @throws std::invalid_argument If either limit is invalid.
          */
-        explicit MemoryRegister(
+        explicit Register(
             std::size_t expected_size = 64,
             std::size_t capacity_limit = max_register_capacity)
             : capacity_limit_{capacity_limit}
@@ -316,20 +344,24 @@ namespace vosp::error
             if (capacity_limit == 0 || capacity_limit > max_register_capacity)
             {
                 throw std::invalid_argument(
-                    "MemoryRegister capacity must be in [1, max_register_capacity]");
+                    "Register capacity must be in [1, max_register_capacity]");
             }
 
             if (expected_size > capacity_limit)
             {
                 throw std::invalid_argument(
-                    "MemoryRegister expected size exceeds its capacity limit");
+                    "Register expected size exceeds its capacity limit");
             }
         }
 
         std::size_t capacity_limit_ = max_register_capacity;
-        mutable std::mutex mutex_;
+        [[no_unique_address]] mutable typename Policy::Mutex mutex_;
         std::unordered_set<Error, ErrorHash> errors_;
     };
+
+    /** @brief Compatibility alias for the original thread-safe register name. */
+    template<Category RegisterCategory>
+    using MemoryRegister = Register<RegisterCategory, register_policy::ThreadSafe>;
 
     /**
      * @brief Restricts a type to implementations of IRegister.
@@ -614,5 +646,57 @@ namespace vosp::error
     template<AsyncExecutor Executor, RegisterType... Registers>
     using AsyncSystem =
         ErrorSystem<AsyncRegister<Executor>, AsyncHandler<Executor>, Registers...>;
+
+    namespace system_policy
+    {
+        /** @brief Selects direct single-threaded routing. */
+        struct SingleThreaded
+        {
+        };
+
+        /** @brief Selects routing serialized independently per register. */
+        struct MultiThreaded
+        {
+        };
+
+        /** @brief Selects routing through a caller-owned executor. */
+        template<AsyncExecutor Executor>
+        struct Async
+        {
+            using ExecutorType = Executor;
+        };
+    }
+
+    namespace detail
+    {
+        template<typename Policy, RegisterType... Registers>
+        struct SystemSelector;
+
+        template<RegisterType... Registers>
+        struct SystemSelector<system_policy::SingleThreaded, Registers...>
+        {
+            using Type = SingleThreadedSystem<Registers...>;
+        };
+
+        template<RegisterType... Registers>
+        struct SystemSelector<system_policy::MultiThreaded, Registers...>
+        {
+            using Type = MultiThreadedSystem<Registers...>;
+        };
+
+        template<AsyncExecutor Executor, RegisterType... Registers>
+        struct SystemSelector<system_policy::Async<Executor>, Registers...>
+        {
+            using Type = AsyncSystem<Executor, Registers...>;
+        };
+    }
+
+    /**
+     * @brief Unified error-system API selected by one execution policy.
+     * @tparam Policy One of the policies in system_policy.
+     * @tparam Registers Externally owned category registers.
+     */
+    template<typename Policy, RegisterType... Registers>
+    using System = typename detail::SystemSelector<Policy, Registers...>::Type;
 
 }

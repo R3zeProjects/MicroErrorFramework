@@ -273,6 +273,13 @@ if(BUILD_TESTING)
         PRIVATE MicroErrorSystemHeaders
     )
 
+    add_executable(MicroErrorSystemUnifiedApiTests
+        tests/vosp_unified_api_tests.cpp
+    )
+    target_link_libraries(MicroErrorSystemUnifiedApiTests
+        PRIVATE MicroErrorSystemHeaders
+    )
+
     if(BUILD_EXTERNAL_STRESS_TESTS)
         add_executable(MicroErrorSystemNlohmannStressTests
             tests/vosp_nlohmann_stress_tests.cpp
@@ -293,10 +300,12 @@ if(BUILD_TESTING)
     enable_sanitizers(MicroErrorSystemLoggerTests)
     enable_sanitizers(MicroErrorSystemWorkerPoolStressTests)
     enable_sanitizers(MicroErrorSystemConcurrencyContractTests)
+    enable_sanitizers(MicroErrorSystemUnifiedApiTests)
     enable_coverage(MicroErrorSystemTests)
     enable_coverage(MicroErrorSystemLoggerTests)
     enable_coverage(MicroErrorSystemWorkerPoolStressTests)
     enable_coverage(MicroErrorSystemConcurrencyContractTests)
+    enable_coverage(MicroErrorSystemUnifiedApiTests)
     if(BUILD_EXTERNAL_STRESS_TESTS)
         enable_sanitizers(MicroErrorSystemNlohmannStressTests)
         enable_coverage(MicroErrorSystemNlohmannStressTests)
@@ -320,6 +329,10 @@ if(BUILD_TESTING)
     add_test(
         NAME MicroErrorSystem.ConcurrencyContractTests
         COMMAND MicroErrorSystemConcurrencyContractTests
+    )
+    add_test(
+        NAME MicroErrorSystem.UnifiedApiTests
+        COMMAND MicroErrorSystemUnifiedApiTests
     )
     set_tests_properties(MicroErrorSystem.ConcurrencyContractTests
         PROPERTIES TIMEOUT 120
@@ -367,6 +380,7 @@ if(BUILD_TESTING)
             MicroErrorSystem.LoggerTests
             MicroErrorSystem.WorkerPoolStressTests
             MicroErrorSystem.ConcurrencyContractTests
+            MicroErrorSystem.UnifiedApiTests
             PROPERTIES
                 ENVIRONMENT_MODIFICATION "${MicroErrorSystemTestPathModification}"
         )

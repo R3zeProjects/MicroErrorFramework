@@ -29,10 +29,10 @@ control layer in larger C++ systems.
 - strongly typed `Error`, `Result<T>`, and `OperationResult` based on
   `std::expected`;
 - category-specific registers with `IRegister` and `CategoryRegister`;
-- `MemoryRegister` with thread-safe storage and bounded capacity;
+- unified `Register<Category, Policy>` with bounded capacity;
 - category routing through `Handler` and `ConcurrentHandler`;
 - compile-time single-threaded, multi-threaded, and asynchronous systems;
-- `IndustrialWorkerPool` with bounded workers and bounded queue;
+- `WorkerPool` with bounded workers and bounded queue;
 - blocking backpressure when the queue is full;
 - cooperative cancellation with `std::stop_token`;
 - queue cleanup and configurable drain/cancel shutdown behavior;
@@ -58,7 +58,7 @@ All values below are real local Release measurements, not theoretical claims.
 | Sharded logger dispatch | Prepared records, 4 workers | **71.1305M records/s** |
 | Owned-record formatting | Equal-output formatting, 1 thread | **5.75945M records/s** |
 | Owned-record formatting | Equal-output formatting, 4 workers | **10.3093M records/s** |
-| Immediate stream sink | `ConsoleSink`, 1 thread | **17.0054M records/s** |
+| Immediate stream sink | default `Sink`, 1 thread | **17.0054M records/s** |
 | Buffered stream sink | Per-thread buffering, 4 workers | **51.6983M records/s** |
 | JSON integration | Parse and route errors, 4 workers | **311,158 documents/s** |
 | HTTP integration | Concurrent local workload | **1,000 requests; 500 errors routed** |
@@ -66,9 +66,9 @@ All values below are real local Release measurements, not theoretical claims.
 Verification results:
 
 ```text
-Native unit/stress/contract CTest     4/4 passed
+Native unit/stress/contract CTest     5/5 passed
 Production benchmark smoke            1/1 passed
-MSVC Release CTest                    5/5 passed
+MSVC Release CTest                    6/6 passed
 nlohmann/json external CTest          6/6 passed
 fmt + cpp-httplib local CTest         5/5 passed
 Windows sanitizer fuzz smoke        100,000 inputs passed
@@ -93,35 +93,38 @@ component measurements, not universal performance guarantees.
 The common one-sink path uses an atomic sink pointer and avoids the registry
 mutex. `ParallelSinkDispatch` removes callback serialization for thread-safe
 sinks, while `MinimalMetadataPolicy` omits timestamp and thread-id collection.
-The same `PolicyLogger` therefore covers safe, parallel, and latency-oriented
+The same `Logger` therefore covers safe, parallel, and latency-oriented
 modes without a separate fast-logger class. Throughput remains machine-dependent.
 
 ## Architecture
 
 ```text
-Error ──► ErrorSystem ──► Handler ──► CategoryRegister ──► OperationResult
+Error ──► System ──► Handler ──► Register ──► OperationResult
   │
-  └────► PolicyLogger ──► ILogSink
+  └────► Logger ──► Sink
 
-AsyncSystem ──► external executor (for example, IndustrialWorkerPool)
+System<system_policy::Async<Executor>> ──► external executor
 ```
 
 The system mode is selected by types rather than runtime flags:
 
 ```cpp
-using Single = vosp::error::SingleThreadedSystem<RegisterA, RegisterB>;
-using Multi  = vosp::error::MultiThreadedSystem<RegisterA, RegisterB>;
-using Async  = vosp::error::AsyncSystem<Executor, RegisterA, RegisterB>;
+using Single = vosp::error::System<
+    vosp::error::system_policy::SingleThreaded, RegisterA, RegisterB>;
+using Multi = vosp::error::System<
+    vosp::error::system_policy::MultiThreaded, RegisterA, RegisterB>;
+using Async = vosp::error::System<
+    vosp::error::system_policy::Async<Executor>, RegisterA, RegisterB>;
 ```
 
 ## Why policies are needed
 
 Policies keep execution and logging decisions explicit at compile time:
 
-- `TypeRegister` selects the storage/synchronization model;
-- `TypeHandler` selects routing behavior for that model;
-- `LoggerPolicy` decides which log levels reach sinks;
-- `MinimumLevelPolicy<Level::WARNING>` removes lower-severity records before
+- `register_policy` selects internal register synchronization;
+- `system_policy` selects direct, synchronized, or asynchronous routing;
+- `logger_policy` selects filtering, dispatch, and metadata collection;
+- `logger_policy::Minimum<Level::WARNING>` removes lower-severity records before
   sink callbacks, reducing work and output volume.
 
 This avoids runtime mode switches in hot paths and lets the compiler reject an
@@ -181,8 +184,8 @@ target_link_libraries(my_target PRIVATE vosp::vosp)
 
 using namespace vosp::error;
 
-MemoryRegister<Category::NETWORK> network;
-SingleThreadedSystem<decltype(network)> system{network};
+Register<Category::NETWORK> network;
+System<system_policy::SingleThreaded, decltype(network)> system{network};
 
 const Error error{
     Category::NETWORK,
@@ -197,7 +200,7 @@ if (!result) {
 }
 
 if (network.contains(error)) {
-    system.remove(error);
+    const OperationResult removed = system.remove(error);
 }
 ```
 
@@ -215,12 +218,12 @@ if (result) {
 }
 ```
 
-## Industrial worker pool
+## Worker pool
 
 ```cpp
 #include <vosp.hpp>
 
-vosp::async::IndustrialWorkerPool pool{
+vosp::async::WorkerPool pool{
     4,    // worker count
     128   // queue capacity
 };
@@ -254,34 +257,36 @@ returns the exact accepted count if shutdown interrupts a batch.
 
 ## Logging
 
-Choose the sink by delivery semantics. `ConsoleSink` writes each record
-immediately and is the clearest default for diagnostics:
+Choose sink behavior through `sink_policy`. The default `Sink` writes each
+record immediately and is the clearest option for diagnostics:
 
 ```cpp
 #include <vosp.hpp>
 #include <iostream>
 
-vosp::logger::ConsoleSink console{std::cout};
-vosp::logger::Logger logger{console};
+vosp::logger::Sink output{std::cout};
+vosp::logger::Logger logger{output};
 
-logger.error(vosp::error::Error{
+const bool logged = logger.error(vosp::error::Error{
     vosp::error::Category::NETWORK,
     1001,
     "Connection refused"
 });
 ```
 
-For concurrent producers, `BufferedStreamSink` keeps the same logger API while
-reducing contention on the destination stream:
+For concurrent producers, select `sink_policy::Buffered` and parallel logger
+dispatch without changing the logging calls:
 
 ```cpp
 #include <vosp.hpp>
 #include <iostream>
 
-vosp::logger::BufferedStreamSink sink{std::cout};
-vosp::logger::ParallelLogger logger{sink};
+vosp::logger::Sink<vosp::logger::sink_policy::Buffered> sink{std::cout};
+vosp::logger::Logger<
+    vosp::logger::logger_policy::AcceptAll,
+    vosp::logger::logger_policy::Parallel> logger{sink};
 
-logger.info(vosp::error::Error{
+const bool logged = logger.info(vosp::error::Error{
     vosp::error::Category::NETWORK,
     1002,
     "Request completed"
@@ -297,8 +302,8 @@ second constructor argument. Call `flush()` after producer threads have joined
 and before destroying the destination stream. Order is preserved within each
 producer thread; global order between producers is unspecified.
 
-Custom sinks implement `ILogSink`. `PolicyLogger` supports compile-time
-filtering, for example `MinimumLevelPolicy<Level::WARNING>`. A reference-based
+Custom sinks implement `ILogSink`. `Logger` supports compile-time filtering,
+for example `logger_policy::Minimum<Level::WARNING>`. A reference-based
 sink has external ownership and must outlive the logger. To make the logger
 retain a sink safely, attach a `std::shared_ptr` instead:
 
@@ -310,9 +315,9 @@ vosp::logger::Logger logger{sink};
 sink.reset(); // Logger keeps the sink alive.
 ```
 
-`Logger` serializes callbacks, so it is suitable for ordinary sinks that do not
-provide their own synchronization. Use `ParallelLogger` only when every
-attached sink safely supports concurrent calls to `ILogSink::write`:
+The default `Logger` serializes callbacks, so it is suitable for ordinary sinks
+that do not provide synchronization. Select `logger_policy::Parallel` only
+when every attached sink safely supports concurrent calls to `ILogSink::write`:
 
 ```cpp
 #include <atomic>
@@ -331,7 +336,9 @@ private:
 };
 
 AtomicSink sink;
-vosp::logger::ParallelLogger logger{sink};
+vosp::logger::Logger<
+    vosp::logger::logger_policy::AcceptAll,
+    vosp::logger::logger_policy::Parallel> logger{sink};
 ```
 
 For the lowest overhead, compose the same logger with parallel dispatch and
@@ -339,12 +346,12 @@ minimal metadata:
 
 ```cpp
 AtomicSink sink;
-vosp::logger::PolicyLogger<
-    vosp::logger::AcceptAllPolicy,
-    vosp::logger::ParallelSinkDispatch,
-    vosp::logger::MinimalMetadataPolicy> logger{sink};
+vosp::logger::Logger<
+    vosp::logger::logger_policy::AcceptAll,
+    vosp::logger::logger_policy::Parallel,
+    vosp::logger::logger_policy::MinimalMetadata> logger{sink};
 
-logger.info(vosp::error::Error{
+const bool logged = logger.info(vosp::error::Error{
     vosp::error::Category::NETWORK, 1001, "Connection refused"});
 ```
 
@@ -353,12 +360,12 @@ The asynchronous mode uses the same API and owns queued `Error` values. Its
 batches:
 
 ```cpp
-vosp::logger::PolicyLogger<
-    vosp::logger::AcceptAllPolicy,
-    vosp::logger::AsyncSinkDispatch,
-    vosp::logger::MinimalMetadataPolicy> async_logger{sink};
+vosp::logger::Logger<
+    vosp::logger::logger_policy::AcceptAll,
+    vosp::logger::logger_policy::Async,
+    vosp::logger::logger_policy::MinimalMetadata> async_logger{sink};
 
-async_logger.info(vosp::error::Error{
+const bool queued = async_logger.info(vosp::error::Error{
     vosp::error::Category::NETWORK, 1002, "Queued safely"});
 async_logger.flush();
 ```
@@ -482,7 +489,7 @@ in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 ### External HTTP integration workload
 
 The local integration combines `fmt 11.2.0`, `cpp-httplib v0.18.0`, and
-MicroErrorSystem's `MultiThreadedSystem`. Four workers issue requests against a
+MicroErrorSystem's multi-threaded `System`. Four workers issue requests against a
 local HTTP server and route failed responses into a network error register.
 
 ```text
@@ -603,6 +610,7 @@ first stable generation.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Public API and concurrency contracts](docs/API_CONTRACTS.md)
+- [Unified API migration](docs/API_MIGRATION.md)
 - [Benchmark report](docs/BENCHMARKS.md)
 - [External workload validation](docs/EXTERNAL_WORKLOADS.md)
 - [API guide](docs/README.en.md)

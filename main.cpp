@@ -4,7 +4,7 @@
 
 int main()
 {
-    vosp::logger::ConsoleSink sink{std::cout};
+    vosp::logger::Sink sink{std::cout};
     vosp::logger::Logger logger{sink};
     return logger.info(vosp::error::Error{
         vosp::error::Category::NETWORK,

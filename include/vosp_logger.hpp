@@ -130,6 +130,21 @@ namespace vosp::logger
         { Metadata::thread_id() } noexcept -> std::same_as<std::thread::id>;
     };
 
+    /** @brief Short policy names used by the unified Logger API. */
+    namespace logger_policy
+    {
+        using AcceptAll = AcceptAllPolicy;
+
+        template<Level Threshold>
+        using Minimum = MinimumLevelPolicy<Threshold>;
+
+        using Serialized = SerializedSinkDispatch;
+        using Parallel = ParallelSinkDispatch;
+        using Async = AsyncSinkDispatch;
+        using FullMetadata = FullMetadataPolicy;
+        using MinimalMetadata = MinimalMetadataPolicy;
+    }
+
     /** @brief Converts a log level to a stable textual representation. */
     [[nodiscard]] constexpr std::string_view to_string(Level level) noexcept
     {
@@ -287,7 +302,7 @@ namespace vosp::logger
     template<LoggerPolicy Policy = AcceptAllPolicy,
              LoggerDispatchPolicy Dispatch = SerializedSinkDispatch,
              LoggerMetadataPolicy Metadata = FullMetadataPolicy>
-    class PolicyLogger final : public ILogger
+    class PolicyLogger : public ILogger
     {
     private:
         struct SinkSlot
@@ -502,7 +517,7 @@ namespace vosp::logger
      * @note write() reports queue acceptance; sink failures are exposed separately.
      */
     template<LoggerPolicy Policy, LoggerMetadataPolicy Metadata>
-    class PolicyLogger<Policy, AsyncSinkDispatch, Metadata> final : public ILogger
+    class PolicyLogger<Policy, AsyncSinkDispatch, Metadata> : public ILogger
     {
     public:
         PolicyLogger()
@@ -664,8 +679,25 @@ namespace vosp::logger
         std::jthread worker_;
     };
 
-    /** @brief Default serialized logger with no level filtering. */
-    using Logger = PolicyLogger<AcceptAllPolicy>;
+    /**
+     * @brief Unified logger API selected by filtering, dispatch, and metadata policies.
+     */
+    template<LoggerPolicy Filter = logger_policy::AcceptAll,
+             LoggerDispatchPolicy Dispatch = logger_policy::Serialized,
+             LoggerMetadataPolicy Metadata = logger_policy::FullMetadata>
+    class Logger final : public PolicyLogger<Filter, Dispatch, Metadata>
+    {
+        using Base = PolicyLogger<Filter, Dispatch, Metadata>;
+
+    public:
+        using Base::Base;
+    };
+
+    template<SinkType... Sinks>
+    Logger(Sinks&...) -> Logger<>;
+
+    template<SinkType Sink>
+    Logger(std::shared_ptr<Sink>) -> Logger<>;
 
     /**
      * @brief High-throughput logger for sinks with thread-safe write implementations.
@@ -722,7 +754,7 @@ namespace vosp::logger
     /**
      * @brief Thread-safe text sink writing one record per line.
      */
-    class ConsoleSink final : public ILogSink
+    class ConsoleSink : public ILogSink
     {
     public:
         explicit ConsoleSink(std::ostream& output) noexcept
@@ -777,7 +809,7 @@ namespace vosp::logger
      * @note A successful buffered write means that the record was accepted. Call
      * flush() to observe the final stream state and make buffered records visible.
      */
-    class BufferedStreamSink final : public ILogSink
+    class BufferedStreamSink : public ILogSink
     {
     public:
         /** @brief Default per-thread threshold before automatic stream output. */
@@ -944,4 +976,38 @@ namespace vosp::logger
         std::deque<Shard> shards_;
         inline static std::atomic<std::uint64_t> next_instance_id_ = 1;
     };
+
+    namespace sink_policy
+    {
+        /** @brief Selects immediate synchronized stream writes. */
+        struct Immediate
+        {
+        };
+
+        /** @brief Selects producer-local buffering with explicit flush support. */
+        struct Buffered
+        {
+        };
+    }
+
+    /** @brief Unified stream sink selected by an output policy. */
+    template<typename Policy = sink_policy::Immediate>
+    class Sink;
+
+    template<>
+    class Sink<sink_policy::Immediate> final : public ConsoleSink
+    {
+    public:
+        using ConsoleSink::ConsoleSink;
+    };
+
+    template<>
+    class Sink<sink_policy::Buffered> final : public BufferedStreamSink
+    {
+    public:
+        using BufferedStreamSink::BufferedStreamSink;
+    };
+
+    Sink(std::ostream&) -> Sink<sink_policy::Immediate>;
+    Sink(std::ostream&, std::size_t) -> Sink<sink_policy::Buffered>;
 }

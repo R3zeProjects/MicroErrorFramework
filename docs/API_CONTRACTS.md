@@ -17,10 +17,10 @@ release-candidate soak evidence.
 
 - `Error` owns its message. Copies are independent; `message()` is a view valid
   until that `Error` is destroyed or assigned.
-- `MemoryRegister` owns stored `Error` values.
+- `Register` owns stored `Error` values.
 - `Handler`, `ConcurrentHandler`, and synchronous `ErrorSystem` instances hold
   references to registers. Registers must outlive them.
-- `AsyncSystem` holds a reference to its executor and shared internal routing
+- An asynchronous `System` holds a reference to its executor and shared routing
   state. The executor and registers must outlive all submitted operations and
   the system.
 - A logger sink attached by reference must outlive the logger and every
@@ -28,7 +28,7 @@ release-candidate soak evidence.
   barrier for a callback that already selected the sink.
 - A sink attached with `shared_ptr` is retained while registered and while an
   in-flight delivery snapshot references it.
-- `IndustrialWorkerPool` owns queued callables and worker threads. Destroying
+- `WorkerPool` owns queued callables and worker threads. Destroying
   the pool from one of its own callbacks is unsupported; an owner thread must
   perform destruction after workers have returned.
 
@@ -37,19 +37,19 @@ release-candidate soak evidence.
 | Type | Concurrent operations | Contract |
 | --- | --- | --- |
 | `Error` | const reads | safe after publication; no mutating API |
-| `MemoryRegister` | `add`, `remove`, `contains`, `size`, `reserve` | internally serialized |
-| `Handler` / `SingleThreadedSystem` | none | caller provides synchronization |
-| `ConcurrentHandler` / `MultiThreadedSystem` | `add`, `remove` | one routing lock per configured register |
-| `IndustrialWorkerPool` | submission, observation, `wait`, `clear_queue`, `shutdown` | safe; shutdown is idempotent and serializes joining |
-| serialized `PolicyLogger` | publish, attach, detach | safe; sink callbacks are serialized |
-| parallel `PolicyLogger` | publish, attach, detach | logger state is safe; every sink must itself accept concurrent callbacks |
-| async `PolicyLogger` | publish, attach, detach, `flush`, `shutdown` | safe; one backend consumer drains a bounded queue |
-| `ConsoleSink` | `write` | do not mutate the stream concurrently outside the sink |
-| `BufferedStreamSink` | `write`, `flush` | producer-local buffers plus serialized output |
+| default `Register` | `add`, `remove`, `contains`, `size`, `reserve` | internally serialized |
+| single-threaded `System` | none | caller provides synchronization |
+| multi-threaded `System` | `add`, `remove` | one routing lock per configured register |
+| `WorkerPool` | submission, observation, `wait`, `clear_queue`, `shutdown` | safe; shutdown is idempotent and serializes joining |
+| serialized `Logger` | publish, attach, detach | safe; sink callbacks are serialized |
+| parallel `Logger` | publish, attach, detach | logger state is safe; every sink must itself accept concurrent callbacks |
+| async `Logger` | publish, attach, detach, `flush`, `shutdown` | safe; one backend consumer drains a bounded queue |
+| immediate `Sink` | `write` | do not mutate the stream concurrently outside the sink |
+| buffered `Sink` | `write`, `flush` | producer-local buffers plus serialized output |
 
 ## Worker-pool contract
 
-`IndustrialWorkerPool(worker_count, queue_capacity)` accepts values in
+`WorkerPool(worker_count, queue_capacity)` accepts values in
 `[1, 1024]`; zero workers means `hardware_concurrency()` and is rejected if the
 platform also reports zero. Queue capacity is the maximum number of tasks that
 have not started. Active tasks do not consume queue slots.
@@ -95,7 +95,7 @@ the pool object and heap allocations made by large callables are excluded.
 - Async sink false results and exceptions are contained and counted by
   `failed_records()`.
 - Async `flush()` blocks until every accepted record has reached sink callbacks.
-  It does not flush sink-specific buffers; call `BufferedStreamSink::flush()`
+  It does not flush sink-specific buffers; call buffered `Sink::flush()`
   afterwards when stream visibility is required.
 - Async publish blocks at the fixed 1024-record queue limit and returns false if
   shutdown begins while it is waiting.
@@ -130,8 +130,7 @@ task exceptions; ASan/UBSan, TSan, LibFuzzer, Memcheck and Helgrind are CI gates
 
 - A hung sink can delay serialized callers, async flush and shutdown. VOSP does
   not terminate user callbacks or implement an I/O timeout.
-- `ConsoleSink` and `BufferedStreamSink` expose stream failure, but file
+- Immediate and buffered `Sink` policies expose stream failure, but file
   rotation, fsync policy, disk quotas and retention are application-owned.
 - Benchmark null streams isolate framework overhead and are not storage latency
   measurements.
-

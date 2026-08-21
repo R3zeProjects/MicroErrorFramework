@@ -37,9 +37,11 @@ returns no value on success.
 contract. `CategoryRegister<Category>` supplies the category implementation for
 custom registers.
 
-`MemoryRegister<Category>` is the built-in thread-safe implementation. It uses
-bounded `std::unordered_set` storage, rejects errors from another category, and
-reports duplicate, missing, and capacity failures through `OperationResult`.
+`Register<Category, Policy>` is the built-in bounded implementation. It uses
+`std::unordered_set` storage, rejects errors from another category, and reports
+duplicate, missing, and capacity failures through `OperationResult`.
+`register_policy::ThreadSafe` is the default; `SingleThreaded` removes internal
+locking when access is externally serialized.
 
 `Handler` routes an operation to the first matching register without adding
 synchronization. `ConcurrentHandler` adds one independent lock per register.
@@ -47,36 +49,35 @@ Both handlers reference externally owned registers.
 
 ### Error systems
 
-The public aliases select execution behavior at compile time:
+`System<Policy, Registers...>` selects execution behavior at compile time:
 
-- `SingleThreadedSystem<...>` performs direct calls without handler locks;
-- `MultiThreadedSystem<...>` serializes operations independently per register;
-- `AsyncSystem<Executor, ...>` submits owned error values to an external
+- `system_policy::SingleThreaded` performs direct calls without handler locks;
+- `system_policy::MultiThreaded` serializes operations independently per register;
+- `system_policy::Async<Executor>` submits owned error values to an external
   executor and returns `std::future<OperationResult>`.
 
 The asynchronous system shares its handler with submitted callbacks so that a
-callback never captures a destroyed `AsyncSystem` object. The executor and
+callback never captures a destroyed `System` object. The executor and
 referenced registers remain externally owned.
 
 ### Logging
 
-`PolicyLogger` sends `LogEntry` values to one or more `ILogSink` instances.
-Its template policies select level filtering, metadata capture, and dispatch
-mode. The predefined `Logger` and `ParallelLogger` aliases cover the common
-serialized and concurrent sink paths. `AsyncSinkDispatch` adds a bounded queue,
+`Logger` sends `LogEntry` values to one or more `ILogSink` instances. Its
+`logger_policy` parameters select level filtering, metadata capture, and
+dispatch mode. `logger_policy::Async` adds a bounded queue,
 blocking backpressure, batch delivery, explicit `flush`, and failure counters.
 
 Sinks may be attached by reference or by `std::shared_ptr`. Reference-attached
 sinks are non-owning; shared sinks remain owned until detachment or logger
 destruction. Sink callbacks execute outside the sink-list mutex.
 
-`ConsoleSink` writes each record immediately. `BufferedStreamSink` maintains a
-buffer per producer thread and serializes only destination-stream writes.
+`Sink<sink_policy::Immediate>` writes each record immediately. The buffered
+policy maintains a buffer per producer and serializes only stream writes.
 Explicit `flush()` is required when the caller needs final delivery status.
 
 ### Worker pool
 
-`IndustrialWorkerPool` owns a fixed set of `std::jthread` workers and a
+`WorkerPool` owns a fixed set of `std::jthread` workers and a
 preallocated ring queue. Both worker count and queue capacity are bounded by
 1,024. A full queue applies blocking backpressure until capacity becomes
 available or shutdown starts.
@@ -102,7 +103,7 @@ Error -> ErrorSystem/Handler -> category match -> IRegister -> OperationResult
 Asynchronous logging:
 
 ```text
-Error -> PolicyLogger -> bounded queue -> logger worker -> ILogSink
+Error -> Logger -> bounded queue -> logger worker -> Sink
 ```
 
 The two flows are intentionally independent. An application may register an
@@ -112,11 +113,11 @@ error, log it, do both, or do neither.
 
 - `Error` and queued asynchronous records own their message storage.
 - Handlers and error systems do not own registers.
-- `AsyncSystem` does not own its executor.
+- An asynchronous `System` does not own its executor.
 - A reference-attached sink must outlive all logger calls that can reach it.
 - A shared sink is retained by the logger while attached.
 - Stream sinks do not own their `std::ostream`.
-- `IndustrialWorkerPool` owns and joins its workers.
+- `WorkerPool` owns and joins its workers.
 
 For asynchronous error operations, the executor and registers must outlive all
 submitted operations and their futures. For buffered output, producer threads
@@ -124,9 +125,9 @@ must finish before the final explicit flush and stream destruction.
 
 ## Concurrency and shutdown invariants
 
-- `SingleThreadedSystem` requires external single-threaded access.
-- `MemoryRegister` synchronizes its own storage.
-- `MultiThreadedSystem` and `AsyncSystem` also serialize routing per register.
+- A `System` with `SingleThreaded` policy requires external serialization.
+- The default `Register` policy synchronizes its own storage.
+- Multi-threaded and asynchronous system policies serialize routing per register.
 - Parallel logger dispatch requires every attached sink to support concurrent
   `write` calls.
 - `ShutdownMode::DRAIN` accepts no new work and runs all queued tasks.
@@ -152,7 +153,7 @@ must finish before the final explicit flush and stream destruction.
 - Register capacity is capped by `max_register_capacity`.
 - Worker and asynchronous logger queues are bounded and apply backpressure.
 - Running tasks cannot be forcefully interrupted safely.
-- Cross-producer ordering in `BufferedStreamSink` is unspecified.
+- Cross-producer ordering in a buffered `Sink` is unspecified.
 - Predefined errors are `inline const` because `Error` owns a `std::string` and
   is not a literal `constexpr` type.
 

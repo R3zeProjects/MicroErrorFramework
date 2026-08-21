@@ -7,6 +7,8 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ### Added
 
+- Unified policy-based `Register`, `System`, `Sink`, `Logger`, and `WorkerPool`
+  API with focused contract tests.
 - Explicit concurrency contract tests for full-queue backpressure, cooperative
   cancellation, exception propagation, queue clearing, concurrent/repeated
   shutdown, worker-initiated shutdown and async sink recovery/failure.
@@ -19,6 +21,8 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ### Changed
 
+- Documentation now leads with the unified API; the original specialized names
+  remain compatibility aliases during the beta migration.
 - Windows deterministic sanitizer fuzz documentation now uses RelWithDebInfo to
   avoid mixing dynamic Clang ASan with the Microsoft Debug CRT.
 

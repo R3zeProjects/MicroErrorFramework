@@ -554,4 +554,7 @@ namespace vosp::async
         bool stopping_ = false;
         inline static thread_local IndustrialWorkerPool* current_worker_pool_ = nullptr;
     };
+
+    /** @brief Unified public name for the bounded owning worker pool. */
+    using WorkerPool = IndustrialWorkerPool;
 }

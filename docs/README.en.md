@@ -12,9 +12,8 @@ operations that need to return either a value or an error.
 - `Handler`: category-based error routing;
 - `Result<T>`: an alias for `std::expected<T, Error>`;
 - predefined errors in `vosp::error::predefined`;
-- thread-safe `ILogger`, `Logger`, `PolicyLogger`, `ILogSink`, `ConsoleSink`, and
-  `BufferedStreamSink` components;
-- bounded `IndustrialWorkerPool` with 1024 worker/queue limits, backpressure,
+- policy-configured `Logger` and `Sink` components;
+- bounded `WorkerPool` with 1024 worker/queue limits, backpressure,
   and queued-task cancellation.
 
 For build instructions, validation profiles, and measured results, see the
@@ -64,16 +63,20 @@ const bool equal = error == same;
 
 ## Create registers
 
-For bounded in-memory storage, use `MemoryRegister`:
+For bounded in-memory storage, use `Register`:
 
 ```cpp
-MemoryRegister<Category::NETWORK> network;
-MemoryRegister<Category::DATABASE> database;
+Register<Category::NETWORK> network;
+Register<Category::DATABASE> database;
 ```
 
 The optional constructor arguments configure the initial reservation and
 capacity limit. Custom storage can derive from `CategoryRegister<Category>` and
 implement `add()` and `remove()`.
+
+The default `register_policy::ThreadSafe` protects direct concurrent access.
+Use `register_policy::SingleThreaded` only when access is externally serialized,
+for example by a multi-threaded `System`.
 
 ## Route errors with Handler
 
@@ -102,21 +105,22 @@ first matching register is selected.
 The execution mode is selected at compile time through a dedicated system alias:
 
 ```cpp
-using System = MultiThreadedSystem<
-    MemoryRegister<Category::NETWORK>,
-    MemoryRegister<Category::DATABASE>
+using Errors = System<
+    system_policy::MultiThreaded,
+    Register<Category::NETWORK>,
+    Register<Category::DATABASE>
 >;
 
-System system{network, database};
+Errors system{network, database};
 const OperationResult registration_result = system.add(error);
 ```
 
 Available modes:
 
-- `SingleThreadedRegister` + `SingleThreadedHandler`: no locking;
-- `MultiThreadedRegister` + `MultiThreadedHandler`: operations are mutex-protected;
-- `AsyncRegister<Executor>` + `AsyncHandler<Executor>`: operations are submitted
-  to an external executor and return `std::future<OperationResult>`.
+- `system_policy::SingleThreaded`: direct routing without handler locks;
+- `system_policy::MultiThreaded`: one routing lock per register;
+- `system_policy::Async<Executor>`: submission to an external executor with
+  `std::future<OperationResult>` results.
 
 Example executor:
 
@@ -130,23 +134,23 @@ public:
     }
 };
 
-using NetworkRegister = MemoryRegister<Category::NETWORK>;
-using System = AsyncSystem<Executor, NetworkRegister>;
+using NetworkRegister = Register<Category::NETWORK>;
+using AsyncErrors = System<system_policy::Async<Executor>, NetworkRegister>;
 
 Executor executor;
-System system{executor, network};
+AsyncErrors system{executor, network};
 std::future<OperationResult> operation = system.add(error);
 const OperationResult result = operation.get();
 ```
 
-`AsyncSystem` does not own the executor and does not create a hidden thread pool.
+An asynchronous `System` does not own the executor or create a hidden thread pool.
 The executor and registers must outlive every future created by the system.
 
 For production asynchronous execution, use the built-in pool:
 
 ```cpp
-vosp::async::IndustrialWorkerPool pool{4};
-using Async = AsyncSystem<decltype(pool), NetworkRegister>;
+vosp::async::WorkerPool pool{4};
+using Async = System<system_policy::Async<decltype(pool)>, NetworkRegister>;
 
 Async system{pool, network};
 std::future<OperationResult> task = system.add(error);
@@ -169,7 +173,7 @@ state allocation. `failed_dispatches()` and `cancelled_dispatches()` preserve
 operational visibility for that faster path.
 `dispatch_bulk(std::span<Task>)` is the throughput-oriented form: it consumes
 callbacks in grouped queue refills and returns the exact accepted count.
-`MemoryRegister` also accepts a per-instance `capacity_limit`, bounded by the
+`Register` also accepts a per-instance `capacity_limit`, bounded by the
 global `max_register_capacity`.
 
 ## Result<T>
@@ -215,11 +219,11 @@ logger publishes events to connected sinks.
 
 using namespace vosp::logger;
 
-ConsoleSink console{std::cout};
-Logger logger{console};
+Sink output{std::cout};
+Logger logger{output};
 
 const Error error{Category::NETWORK, 1001, "Connection refused"};
-logger.error(error);
+const bool logged = logger.error(error);
 ```
 
 Output:
@@ -228,20 +232,23 @@ Output:
 [ERROR] [NETWORK] code=1001 message=Connection refused
 ```
 
-`ConsoleSink` writes every record immediately. For a shared stream with several
-producer threads, use the buffered sink without changing the logging calls:
+The default `Sink` writes every record immediately. For a shared stream with
+several producers, select the buffered sink policy:
 
 ```cpp
-BufferedStreamSink sink{std::cout};
-ParallelLogger logger{sink};
+Sink<sink_policy::Buffered> sink{std::cout};
+Logger<logger_policy::AcceptAll,
+       logger_policy::Parallel,
+       logger_policy::MinimalMetadata> logger{sink};
 
-logger.info(Error{Category::NETWORK, 1002, "Request completed"});
+const bool logged = logger.info(
+    Error{Category::NETWORK, 1002, "Request completed"});
 if (!sink.flush()) {
     // Handle destination stream failure.
 }
 ```
 
-`BufferedStreamSink` uses a 64 KiB buffer per producer by default. The threshold
+The buffered `Sink` uses a 64 KiB buffer per producer by default. The threshold
 is an optional second constructor argument. Flush after producers have joined.
 Per-producer order is preserved; cross-producer order is unspecified.
 
@@ -250,14 +257,15 @@ sink must outlive the logger. To transfer safe lifetime management to the
 logger, pass `std::shared_ptr<ILogSink>` to its constructor or `attach()`;
 ownership ends at `detach()` or logger destruction. Sink callbacks run outside
 the logger mutex, so reentrant `attach/detach` is supported. Compile-time
-filtering is available with `PolicyLogger<MinimumLevelPolicy<Level::WARNING>>`.
+filtering is available with
+`Logger<logger_policy::Minimum<Level::WARNING>>`.
 
-For a thread-safe high-throughput path, configure the same `PolicyLogger` with
-`ParallelSinkDispatch` and `MinimalMetadataPolicy`. This keeps one logger API,
+For a thread-safe high-throughput path, configure the same `Logger` with
+`logger_policy::Parallel` and `logger_policy::MinimalMetadata`. This keeps one API,
 avoids callback serialization, and omits timestamp/thread-id capture.
 
-`AsyncSinkDispatch` selects the bounded asynchronous specialization of the same
-`PolicyLogger`. It owns queued `Error` values, applies blocking backpressure at
+`logger_policy::Async` selects the bounded asynchronous specialization of the
+same `Logger`. It owns queued `Error` values, applies blocking backpressure at
 1,024 pending records, drains batches on one worker, and provides `flush()` plus
 `failed_records()` for lifecycle and sink-failure control.
 
@@ -280,7 +288,7 @@ can be returned through `std::unexpected`.
 ## Extending the module
 
 1. Add a category to `Category`.
-2. Use `MemoryRegister<NewCategory>` or derive from
+2. Use `Register<NewCategory>` or derive from
    `CategoryRegister<NewCategory>`.
 3. For custom storage, implement `add()` and `remove()`.
 4. Pass the register to `Handler`.
