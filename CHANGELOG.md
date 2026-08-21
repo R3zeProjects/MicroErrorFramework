@@ -5,6 +5,13 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.2.1-beta] - 2026-08-21
+
+### Added
+
+- Stable `[CATEGORY:code] message` representation through
+  `vosp::error::to_string`, `category_name`, and `std::formatter<Error>`.
+
 ## [0.2.0-beta] - 2026-08-21
 
 ### Added
