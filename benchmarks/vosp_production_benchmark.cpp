@@ -85,6 +85,7 @@ namespace
     struct Configuration
     {
         enum class Profile { QUICK, FULL, SOAK } profile = Profile::QUICK;
+        enum class Suite { ALL, LOGGER, WORKER, REGISTER } suite = Suite::ALL;
         std::size_t operations = 20'000;
         std::chrono::seconds soak_duration{30};
         std::optional<std::string> csv_path;
@@ -994,6 +995,10 @@ namespace
             else if (argument == "--profile=soak") config.profile = Configuration::Profile::SOAK;
             else if (argument.starts_with("--operations="))
                 config.operations = std::stoull(std::string{argument.substr(13)});
+            else if (argument == "--suite=all") config.suite = Configuration::Suite::ALL;
+            else if (argument == "--suite=logger") config.suite = Configuration::Suite::LOGGER;
+            else if (argument == "--suite=worker") config.suite = Configuration::Suite::WORKER;
+            else if (argument == "--suite=register") config.suite = Configuration::Suite::REGISTER;
             else if (argument.starts_with("--duration="))
                 config.soak_duration = std::chrono::seconds{
                     std::stoll(std::string{argument.substr(11)})};
@@ -1018,9 +1023,15 @@ int main(int argc, char** argv)
             soak_suite(reporter, config);
             return 0;
         }
-        logger_suite(reporter, config);
-        worker_suite(reporter, config);
-        register_suite(reporter, config);
+        if (config.suite == Configuration::Suite::ALL ||
+            config.suite == Configuration::Suite::LOGGER)
+            logger_suite(reporter, config);
+        if (config.suite == Configuration::Suite::ALL ||
+            config.suite == Configuration::Suite::WORKER)
+            worker_suite(reporter, config);
+        if (config.suite == Configuration::Suite::ALL ||
+            config.suite == Configuration::Suite::REGISTER)
+            register_suite(reporter, config);
         return 0;
     }
     catch (const std::exception& exception)

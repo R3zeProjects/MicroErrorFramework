@@ -525,19 +525,24 @@ namespace vosp::logger
     {
     public:
         Logger()
-            : worker_([this](std::stop_token) { run(); })
+            : queue_(make_queue()),
+              worker_([this](std::stop_token) { run(); })
         {
         }
 
         template<SinkType... Sinks>
         explicit Logger(Sinks&... sinks)
-            : backend_(sinks...), worker_([this](std::stop_token) { run(); })
+            : backend_(sinks...),
+              queue_(make_queue()),
+              worker_([this](std::stop_token) { run(); })
         {
         }
 
         template<SinkType Sink>
         explicit Logger(std::shared_ptr<Sink> sink)
-            : backend_(std::move(sink)), worker_([this](std::stop_token) { run(); })
+            : backend_(std::move(sink)),
+              queue_(make_queue()),
+              worker_([this](std::stop_token) { run(); })
         {
         }
 
@@ -598,6 +603,15 @@ namespace vosp::logger
             Error error;
         };
 
+        using RecordQueue = std::vector<PendingRecord>;
+
+        [[nodiscard]] static RecordQueue make_queue()
+        {
+            RecordQueue queue;
+            queue.reserve(AsyncSinkDispatch::queue_capacity);
+            return queue;
+        }
+
         template<typename ErrorValue>
         [[nodiscard]] bool enqueue(Level level, ErrorValue&& error)
         {
@@ -623,7 +637,7 @@ namespace vosp::logger
 
         void run() noexcept
         {
-            std::deque<PendingRecord> batch;
+            RecordQueue batch = make_queue();
             while (true)
             {
                 {
@@ -674,7 +688,7 @@ namespace vosp::logger
         std::condition_variable records_available_;
         std::condition_variable space_available_;
         std::condition_variable drained_;
-        std::deque<PendingRecord> queue_;
+        RecordQueue queue_;
         std::mutex shutdown_mutex_;
         std::atomic<std::size_t> failed_records_ = 0;
         bool stopping_ = false;
