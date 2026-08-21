@@ -5,6 +5,13 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.2.3-beta] - 2026-08-21
+
+### Added
+
+- Dedicated negative API tests for unsupported formatting, unroutable errors,
+  invalid sink state, null sink ownership, and worker queue limits.
+
 ## [0.2.2-beta] - 2026-08-21
 
 ### Added

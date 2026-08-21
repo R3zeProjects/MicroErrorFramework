@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MicroErrorSystem
-    VERSION 0.2.2
+    VERSION 0.2.3
     LANGUAGES CXX
 )
 
@@ -280,6 +280,13 @@ if(BUILD_TESTING)
         PRIVATE MicroErrorSystemHeaders
     )
 
+    add_executable(MicroErrorSystemNegativeApiTests
+        tests/vosp_negative_api_tests.cpp
+    )
+    target_link_libraries(MicroErrorSystemNegativeApiTests
+        PRIVATE MicroErrorSystemHeaders
+    )
+
     function(add_compile_fail_contract target source)
         add_executable(${target} EXCLUDE_FROM_ALL ${source})
         target_link_libraries(${target} PRIVATE MicroErrorSystemHeaders)
@@ -338,11 +345,13 @@ if(BUILD_TESTING)
     enable_sanitizers(MicroErrorSystemWorkerPoolStressTests)
     enable_sanitizers(MicroErrorSystemConcurrencyContractTests)
     enable_sanitizers(MicroErrorSystemUnifiedApiTests)
+    enable_sanitizers(MicroErrorSystemNegativeApiTests)
     enable_coverage(MicroErrorSystemTests)
     enable_coverage(MicroErrorSystemLoggerTests)
     enable_coverage(MicroErrorSystemWorkerPoolStressTests)
     enable_coverage(MicroErrorSystemConcurrencyContractTests)
     enable_coverage(MicroErrorSystemUnifiedApiTests)
+    enable_coverage(MicroErrorSystemNegativeApiTests)
     if(BUILD_EXTERNAL_STRESS_TESTS)
         enable_sanitizers(MicroErrorSystemNlohmannStressTests)
         enable_coverage(MicroErrorSystemNlohmannStressTests)
@@ -370,6 +379,15 @@ if(BUILD_TESTING)
     add_test(
         NAME MicroErrorSystem.UnifiedApiTests
         COMMAND MicroErrorSystemUnifiedApiTests
+    )
+    add_test(
+        NAME MicroErrorSystem.NegativeApiTests
+        COMMAND MicroErrorSystemNegativeApiTests
+    )
+    set_tests_properties(
+        MicroErrorSystem.UnifiedApiTests
+        MicroErrorSystem.NegativeApiTests
+        PROPERTIES LABELS "api-contract"
     )
     set_tests_properties(MicroErrorSystem.ConcurrencyContractTests
         PROPERTIES TIMEOUT 120
@@ -418,6 +436,7 @@ if(BUILD_TESTING)
             MicroErrorSystem.WorkerPoolStressTests
             MicroErrorSystem.ConcurrencyContractTests
             MicroErrorSystem.UnifiedApiTests
+            MicroErrorSystem.NegativeApiTests
             PROPERTIES
                 ENVIRONMENT_MODIFICATION "${MicroErrorSystemTestPathModification}"
         )
