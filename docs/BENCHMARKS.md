@@ -14,6 +14,42 @@
 
 ## Result
 
+### Complete release history: 0.1.0-beta to 0.4.0-beta
+
+On 2026-08-21 every tagged release was rebuilt independently with Clang 22.1.6
+and Ninja in Release mode. The unchanged cross-release microbenchmark ran seven
+times for each of ten versions. The production benchmark ran seven times for
+each of nine versions from `0.2.0-beta`; version order alternated between
+samples.
+
+| Release | Identical microbenchmark vs 0.1.0 | Common production scenarios vs 0.2.0 |
+| --- | ---: | ---: |
+| `0.1.0-beta` | baseline | unavailable |
+| `0.2.0-beta` | -5.1% | baseline |
+| `0.2.1-beta` | -2.2% | +1.2% |
+| `0.2.2-beta` | -3.4% | +1.5% |
+| `0.2.3-beta` | -7.3% | +0.1% |
+| `0.2.4-beta` | -1.3% | +1.1% |
+| `0.2.5-beta` | -2.9% | +0.3% |
+| `0.3.0-beta` | +47.7% | +24.6% |
+| `0.3.1-beta` | +40.9% | +29.7% |
+| `0.4.0-beta` | **+73.1%** | **+34.5%** |
+
+The production aggregate uses the intersection of 96 exact scenario keys.
+Their timed bodies are unchanged across the measured harness revisions; later
+revisions only add suite selection or new scenarios.
+Relative to `0.2.0-beta`, `0.4.0-beta` measured register **+55.9%**, worker
+**+127.5%**, sink **+2.5%**, logger **+0.7%**, and overall **+34.5%**.
+Patch-only `0.2.x` differences are controls for run-to-run noise because those
+releases did not change the measured runtime paths.
+
+The complete per-release tables, selected hot paths, methodology, and new
+`0.4.0` API results are in the
+[`0.1.0–0.4.0 historical report`](../benchmark-results/v0.1.0-v0.4.0-history-2026-08-21.md).
+Machine-readable medians are available as
+[`CSV`](../benchmark-results/v0.1.0-v0.4.0-medians-2026-08-21.csv), and
+`benchmarks/compare_release_history.py` reproduces both artifacts from raw runs.
+
 ### 0.4.0 register and observability comparison
 
 The 2026-08-21 feature comparison rebuilt the immutable `v0.3.1-beta` tag and

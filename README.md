@@ -52,6 +52,8 @@ All values below are real local Release measurements, not theoretical claims.
 | --- | --- | ---: |
 | Typed register | 100,000 single-threaded inserts | **4.62022M operations/s** |
 | Register subsystem gain | Seven-run geometric mean vs `v0.3.1-beta` | **+57.1%** |
+| Full-history microbenchmark gain | Six unchanged scenarios vs `v0.1.0-beta` | **+73.1%** |
+| Full-history production gain | 96 common scenarios vs `v0.2.0-beta` | **+34.5%** |
 | Concurrent category routing | 99,999 inserts over 3 workers | **5.89096M operations/s** |
 | Asynchronous error system | 1,000 completed operations | **923,361 operations/s** |
 | Tracked worker tasks | `submit()`, 4 workers | **1.74017M tasks/s** |
@@ -90,6 +92,9 @@ for the latest full run are in
 The production matrix, latency percentiles, saturation scenarios, and soak
 results are documented in
 [docs/PRODUCTION_BENCHMARKS.md](docs/PRODUCTION_BENCHMARKS.md).
+The complete ten-release comparison and machine-readable medians are recorded
+in [the historical report](benchmark-results/v0.1.0-v0.4.0-history-2026-08-21.md)
+and its [CSV dataset](benchmark-results/v0.1.0-v0.4.0-medians-2026-08-21.csv).
 
 Logger values are medians of seven Release launches after one excluded warm-up
 process over 3,000,000 owned records. Worker construction is excluded with a
