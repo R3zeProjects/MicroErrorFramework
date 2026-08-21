@@ -7,6 +7,7 @@
 #include <format>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -131,6 +132,32 @@ namespace
                      "failed Result");
     }
 
+    /** @brief Verifies exception conversion without introducing an exception hierarchy. */
+    bool test_attempt()
+    {
+        const Error context{Category::DATABASE, 90, "query failed"};
+        const auto value = attempt(context, [] { return 42; });
+        const auto empty = attempt(context, [] {});
+        const auto standard_failure = attempt(context, []() -> int
+        {
+            throw std::runtime_error{"connection closed"};
+        });
+        const auto unknown_failure = attempt(context, []() -> int
+        {
+            throw 7;
+        });
+
+        return check(value && *value == 42, "attempt returns a value") &&
+               check(empty.has_value(), "attempt supports void") &&
+               check(!standard_failure && standard_failure.error().code() == 90,
+                     "attempt preserves failure code") &&
+               check(standard_failure.error().message() ==
+                         "query failed: connection closed",
+                     "attempt appends std::exception details") &&
+               check(!unknown_failure && unknown_failure.error() == context,
+                     "attempt preserves context for unknown exceptions");
+    }
+
     /** @brief Verifies category routing, rejection, and removal in Handler. */
     bool test_handler()
     {
@@ -250,6 +277,44 @@ namespace
                check(!wrong_remove &&
                          wrong_remove.error().code() == register_category_error_code,
                      "remove rejects a mismatched category");
+    }
+
+    /** @brief Verifies owning register queries, snapshots, and code uniqueness. */
+    bool test_memory_register_queries()
+    {
+        MemoryRegister<Category::NETWORK> register_instance;
+        const Error first{Category::NETWORK, 720, "first"};
+        const Error second{Category::NETWORK, 721, "second"};
+        const Error reused_code{Category::NETWORK, 720, "different text"};
+        if (!register_instance.add(first) || !register_instance.add(second))
+        {
+            return check(false, "query register setup");
+        }
+
+        const auto found = register_instance.find(720);
+        const auto missing = register_instance.find(999);
+        const auto snapshot = register_instance.snapshot();
+        const auto duplicate_code = register_instance.add(reused_code);
+        const auto removed_by_code = register_instance.remove(721);
+        const auto missing_by_code = register_instance.remove(999);
+        const auto cleared = register_instance.clear();
+
+        return check(register_instance.contains(720) == false,
+                     "clear removes code lookup") &&
+               check(found && *found == first, "find returns an owning copy") &&
+               check(!missing, "find reports a missing code") &&
+               check(snapshot.size() == 2 && std::ranges::contains(snapshot, first) &&
+                         std::ranges::contains(snapshot, second),
+                     "snapshot owns every registered error") &&
+               check(!duplicate_code &&
+                         duplicate_code.error().code() == duplicate_error_code,
+                     "error codes are unique within a category register") &&
+               check(removed_by_code.has_value(), "remove accepts an error code") &&
+               check(!missing_by_code &&
+                         missing_by_code.error().code() == missing_error_code,
+                     "remove reports a missing error code") &&
+               check(cleared == 1 && register_instance.size() == 0,
+                     "clear reports and removes stored errors");
     }
 
     /**
@@ -627,8 +692,9 @@ namespace
 
 int main()
 {
-    return test_error() && test_error_formatting() && test_result() && test_handler() &&
-           test_memory_register() && test_memory_register_limits() &&
+    return test_error() && test_error_formatting() && test_result() && test_attempt() &&
+           test_handler() && test_memory_register() && test_memory_register_limits() &&
+           test_memory_register_queries() &&
            test_execution_modes() &&
            test_worker_pool() ? 0 : 1;
 }

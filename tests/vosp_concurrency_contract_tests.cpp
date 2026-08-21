@@ -378,6 +378,61 @@ namespace
                check(sink.writes() == AsyncSinkDispatch::queue_capacity + 1,
                      "shutdown drains records accepted before shutdown");
     }
+
+    /** @brief Verifies that owning register queries remain valid during writes. */
+    bool test_concurrent_register_queries()
+    {
+        constexpr std::size_t producer_count = 4;
+        constexpr std::size_t errors_per_producer = 250;
+        Register<Category::DATABASE> registry{producer_count * errors_per_producer};
+        std::atomic<bool> invalid_snapshot = false;
+        std::atomic<std::size_t> active_producers = producer_count;
+
+        std::jthread observer{[&]
+        {
+            while (active_producers.load(std::memory_order_acquire) != 0)
+            {
+                const auto snapshot = registry.snapshot();
+                if (snapshot.size() > producer_count * errors_per_producer ||
+                    std::ranges::any_of(snapshot, [](const Error& error)
+                    {
+                        return error.category() != Category::DATABASE;
+                    }))
+                {
+                    invalid_snapshot.store(true, std::memory_order_release);
+                }
+            }
+        }};
+
+        std::vector<std::jthread> producers;
+        producers.reserve(producer_count);
+        for (std::size_t producer = 0; producer < producer_count; ++producer)
+        {
+            producers.emplace_back([&, producer]
+            {
+                for (std::size_t index = 0; index < errors_per_producer; ++index)
+                {
+                    const auto code = static_cast<std::uint32_t>(
+                        producer * errors_per_producer + index + 1);
+                    static_cast<void>(registry.add(
+                        Error{Category::DATABASE, code, "concurrent query"}));
+                    const auto copy = registry.find(code);
+                    if (!copy || copy->code() != code)
+                    {
+                        invalid_snapshot.store(true, std::memory_order_release);
+                    }
+                }
+                active_producers.fetch_sub(1, std::memory_order_release);
+            });
+        }
+        producers.clear();
+        observer.join();
+
+        return check(!invalid_snapshot.load(std::memory_order_acquire),
+                     "concurrent register snapshots remain valid") &&
+               check(registry.size() == producer_count * errors_per_producer,
+                     "concurrent register retains every unique code");
+    }
 }
 
 int main()
@@ -388,5 +443,6 @@ int main()
            test_worker_initiated_shutdown() &&
            test_worker_rejects_all_submission_forms_after_shutdown() &&
            test_async_logger_backpressure_recovery() &&
-           test_async_logger_failure_and_shutdown_contract() ? 0 : 1;
+           test_async_logger_failure_and_shutdown_contract() &&
+           test_concurrent_register_queries() ? 0 : 1;
 }

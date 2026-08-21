@@ -5,17 +5,20 @@
 #include <concepts>
 #include <cstdint>
 #include <expected>
+#include <exception>
 #include <format>
 #include <future>
 #include <functional>
 #include <memory>
 #include <stdexcept>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <unordered_set>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace vosp::error
 {
@@ -102,7 +105,7 @@ namespace vosp::error
 
     /**
      * @brief Formats an error as `[CATEGORY:code] message`.
-     * @note The representation is stable throughout the 0.3.x release line.
+     * @note The representation is stable throughout the 0.4.x release line.
      */
     [[nodiscard]] inline std::string to_string(const Error& error)
     {
@@ -138,6 +141,58 @@ namespace vosp::error
     using Result = std::expected<T, Error>;
 
     using OperationResult = Result<void>;
+
+    /**
+     * @brief Invokes a function and converts thrown exceptions into an Error result.
+     * @tparam Function Nullary callable returning a non-reference value or void.
+     * @param failure Error category, code, and fallback message for a failure.
+     * @param function Operation to invoke.
+     * @return The callable result, or an Error containing the exception message.
+     * @note Allocation failure while constructing the returned Error may propagate.
+     */
+    template<typename Function>
+        requires std::invocable<Function&&> &&
+                 (!std::is_reference_v<std::invoke_result_t<Function&&>>)
+    [[nodiscard]] auto attempt(Error failure, Function&& function)
+        -> Result<std::invoke_result_t<Function&&>>
+    {
+        using Value = std::invoke_result_t<Function&&>;
+
+        try
+        {
+            if constexpr (std::is_void_v<Value>)
+            {
+                std::invoke(std::forward<Function>(function));
+                return {};
+            }
+            else
+            {
+                return std::invoke(std::forward<Function>(function));
+            }
+        }
+        catch (const std::exception& exception)
+        {
+            std::string message{failure.message()};
+            const char* const diagnostic = exception.what();
+            if (const std::string_view detail = diagnostic != nullptr
+                    ? std::string_view{diagnostic}
+                    : std::string_view{};
+                !detail.empty())
+            {
+                if (!message.empty())
+                {
+                    message.append(": ");
+                }
+                message.append(detail);
+            }
+            return std::unexpected(Error{
+                failure.category(), failure.code(), std::move(message)});
+        }
+        catch (...)
+        {
+            return std::unexpected(std::move(failure));
+        }
+    }
 
     inline constexpr std::uint32_t duplicate_error_code = 0xE001;
     inline constexpr std::uint32_t missing_error_code = 0xE002;
@@ -301,7 +356,7 @@ namespace vosp::error
 
             if (errors_.size() >= capacity_limit_)
             {
-                if (errors_.contains(error))
+                if (errors_.contains(error.code()))
                 {
                     return std::unexpected(Error{
                         RegisterCategory,
@@ -317,7 +372,7 @@ namespace vosp::error
                 });
             }
 
-            if (!errors_.insert(error).second)
+            if (!errors_.try_emplace(error.code(), error).second)
             {
                 return std::unexpected(Error{
                     RegisterCategory,
@@ -343,7 +398,8 @@ namespace vosp::error
                 });
             }
 
-            if (errors_.erase(error) == 0)
+            const auto stored = errors_.find(error.code());
+            if (stored == errors_.end() || stored->second != error)
             {
                 return std::unexpected(Error{
                     RegisterCategory,
@@ -352,6 +408,23 @@ namespace vosp::error
                 });
             }
 
+            errors_.erase(stored);
+
+            return {};
+        }
+
+        /** @brief Removes an error by its category-local code. */
+        [[nodiscard]] OperationResult remove(std::uint32_t code)
+        {
+            const std::lock_guard lock{mutex_};
+            if (errors_.erase(code) == 0)
+            {
+                return std::unexpected(Error{
+                    RegisterCategory,
+                    missing_error_code,
+                    "Error code is not registered"
+                });
+            }
             return {};
         }
 
@@ -359,11 +432,56 @@ namespace vosp::error
         [[nodiscard]] bool contains(const Error& error) const
         {
             const std::lock_guard lock{mutex_};
-            return errors_.contains(error);
+            const auto stored = errors_.find(error.code());
+            return stored != errors_.end() && stored->second == error;
+        }
+
+        /** @brief Returns whether this register contains an error code. */
+        [[nodiscard]] bool contains(std::uint32_t code) const
+        {
+            const std::lock_guard lock{mutex_};
+            return errors_.contains(code);
+        }
+
+        /**
+         * @brief Finds an error by code and returns an owning copy.
+         * @note Returning a value keeps the result valid after concurrent mutation.
+         */
+        [[nodiscard]] std::optional<Error> find(std::uint32_t code) const
+        {
+            const std::lock_guard lock{mutex_};
+            const auto stored = errors_.find(code);
+            if (stored == errors_.end())
+            {
+                return std::nullopt;
+            }
+            return stored->second;
+        }
+
+        /** @brief Returns an owning, concurrency-safe snapshot of all errors. */
+        [[nodiscard]] std::vector<Error> snapshot() const
+        {
+            const std::lock_guard lock{mutex_};
+            std::vector<Error> result;
+            result.reserve(errors_.size());
+            for (const auto& entry : errors_)
+            {
+                result.push_back(entry.second);
+            }
+            return result;
+        }
+
+        /** @brief Removes every error and returns the previous size. */
+        [[nodiscard]] std::size_t clear()
+        {
+            const std::lock_guard lock{mutex_};
+            const auto previous_size = errors_.size();
+            errors_.clear();
+            return previous_size;
         }
 
         /** @brief Returns the current number of registered errors. */
-        [[nodiscard]] std::size_t size() const noexcept
+        [[nodiscard]] std::size_t size() const
         {
             const std::lock_guard lock{mutex_};
             return errors_.size();
@@ -387,7 +505,7 @@ namespace vosp::error
 
         std::size_t capacity_limit_ = max_register_capacity;
         [[no_unique_address]] mutable typename Policy::Mutex mutex_;
-        std::unordered_set<Error, ErrorHash> errors_;
+        std::unordered_map<std::uint32_t, Error> errors_;
     };
 
     /** @brief Compatibility alias for the original thread-safe register name. */

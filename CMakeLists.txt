@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MicroErrorSystem
-    VERSION 0.3.1
+    VERSION 0.4.0
     LANGUAGES CXX
 )
 
@@ -337,6 +337,10 @@ if(BUILD_TESTING)
     add_compile_fail_contract(
         InvalidLoggerDispatchPolicy
         tests/compile_fail/invalid_logger_dispatch_policy.cpp
+    )
+    add_compile_fail_contract(
+        InvalidAttemptReference
+        tests/compile_fail/invalid_attempt_reference.cpp
     )
 
     if(BUILD_EXTERNAL_STRESS_TESTS)

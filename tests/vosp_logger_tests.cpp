@@ -5,6 +5,7 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -69,6 +70,16 @@ namespace
         std::size_t writes = 0;
     };
 
+    /** @brief Sink used to verify that capture preserves the operation error. */
+    class ThrowingSink final : public ILogSink
+    {
+    public:
+        [[nodiscard]] bool write(const LogEntry&) override
+        {
+            throw std::runtime_error{"sink failure"};
+        }
+    };
+
     /** @brief Sink that mutates logger membership while handling a record. */
     class ReentrantSink final : public ILogSink
     {
@@ -110,6 +121,48 @@ namespace
                check(sink.entries.front().error == error, "entry error") &&
                check(logger.detach(sink), "detach sink") &&
                check(!logger.error(error), "logger without sinks");
+    }
+
+    /** @brief Verifies direct Result logging and exception capture. */
+    bool test_error_observability()
+    {
+        TestSink sink;
+        Logger logger{sink};
+        const Error context{Category::DATABASE, 1100, "database operation"};
+
+        const auto success = logger.capture(context, [] { return 12; });
+        const auto failure = logger.capture(context, []() -> int
+        {
+            throw std::runtime_error{"timeout"};
+        });
+        const Result<int> result_failure{
+            std::unexpect,
+            Error{Category::NETWORK, 1101, "network result"}
+        };
+        const Result<int> result_success{1};
+
+        ThrowingSink throwing_sink;
+        Logger failing_logger{throwing_sink};
+        const auto preserved = failing_logger.capture(context, []() -> int
+        {
+            throw std::runtime_error{"primary failure"};
+        });
+
+        return check(success && *success == 12, "capture returns successful value") &&
+               check(!failure && failure.error().message() ==
+                         "database operation: timeout",
+                     "capture converts exception") &&
+               check(sink.entries.size() == 1 &&
+                         sink.entries.front().error == failure.error(),
+                     "capture logs converted error") &&
+               check(logger.error(result_success), "successful Result needs no log") &&
+               check(logger.error(result_failure), "failed Result is accepted") &&
+               check(sink.entries.size() == 2 &&
+                         sink.entries.back().error == result_failure.error(),
+                     "failed Result is logged directly") &&
+               check(!preserved && preserved.error().message() ==
+                         "database operation: primary failure",
+                     "sink exception does not replace operation error");
     }
 
     /** @brief Verifies ConsoleSink formatting and stream error propagation. */
@@ -457,6 +510,7 @@ int main()
 {
     return test_string_conversion() &&
            test_logger_lifecycle() &&
+           test_error_observability() &&
            test_console_sink() &&
            test_buffered_stream_sink() &&
            test_logger_policy() &&

@@ -261,6 +261,49 @@ namespace vosp::logger
             return publish(Level::ERROR, std::forward<ErrorValue>(error_value));
         }
 
+        /**
+         * @brief Publishes the failure held by a Result and ignores successful values.
+         * @return true for success results or when the sink accepts the error.
+         */
+        template<typename Value>
+        [[nodiscard]] bool error(const vosp::error::Result<Value>& result)
+        {
+            return result.has_value() || write(Level::ERROR, result.error());
+        }
+
+        /**
+         * @brief Runs an operation and converts exceptions into a logged Error result.
+         * @param failure Error context used when the operation throws.
+         * @param function Nullary callable returning a non-reference value or void.
+         * @param level Severity used for the generated failure record.
+         * @return The operation value, or the generated Error.
+         * @note Logging is best effort so a failing sink cannot replace the operation error.
+         */
+        template<typename Function>
+            requires std::invocable<Function&&> &&
+                     (!std::is_reference_v<std::invoke_result_t<Function&&>>)
+        [[nodiscard]] auto capture(
+            Error failure,
+            Function&& function,
+            Level level = Level::ERROR)
+            -> vosp::error::Result<std::invoke_result_t<Function&&>>
+        {
+            auto result = vosp::error::attempt(
+                std::move(failure), std::forward<Function>(function));
+            if (!result)
+            {
+                try
+                {
+                    static_cast<void>(write(level, result.error()));
+                }
+                catch (...)
+                {
+                    // The operation error remains the primary result.
+                }
+            }
+            return result;
+        }
+
         /** @brief Publishes a CRITICAL record. */
         template<ErrorArgument ErrorValue>
         [[nodiscard]] bool critical(ErrorValue&& error)
