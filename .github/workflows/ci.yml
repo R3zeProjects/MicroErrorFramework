@@ -228,6 +228,7 @@ jobs:
           cmake -G Ninja -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
           -DBUILD_TESTING=ON
+          -DENABLE_HELGRIND_ANNOTATIONS=ON
       - name: Build
         run: cmake --build build --parallel
       - name: Memcheck
