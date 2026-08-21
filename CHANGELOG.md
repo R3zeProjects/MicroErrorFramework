@@ -9,9 +9,9 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ### Performance
 
-- Reused worker-local bulk claim storage instead of reconstructing sixteen
-  optional task slots for every scalar dispatch.
-- Improved the 20-scenario WorkerPool dispatch geometric mean by 13.0% over
+- Split scalar and bulk claim storage so scalar dispatch constructs one task
+  slot while bulk dispatch initializes its 16-slot batch only when selected.
+- Improved the 20-scenario WorkerPool dispatch geometric mean by 15.3% over
   `v0.3.0-beta` in the documented seven-run local Release comparison.
 
 ### CI
@@ -19,7 +19,7 @@ the version policy described in `docs/API_CONTRACTS.md`.
 - Changed the performance workflow to compare every candidate with the immutable
   `v0.3.0-beta` tag on pushes, pull requests, and manual runs.
 - Added alternating run order, subsystem geometric means, message-size reporting,
-  a 5% dispatch improvement gate, and bounded worker/subsystem regression gates.
+  a 5% dispatch improvement gate, and bounded dispatch/subsystem regression gates.
 
 ## [0.3.0-beta] - 2026-08-21
 
