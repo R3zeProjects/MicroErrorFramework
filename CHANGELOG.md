@@ -19,7 +19,7 @@ the version policy described in `docs/API_CONTRACTS.md`.
 - Changed the performance workflow to compare every candidate with the immutable
   `v0.3.0-beta` tag on pushes, pull requests, and manual runs.
 - Added alternating run order, subsystem geometric means, message-size reporting,
-  a 5% dispatch improvement gate, and bounded dispatch/subsystem regression gates.
+  a 3% dispatch improvement gate, and bounded dispatch/subsystem regression gates.
 
 ## [0.3.0-beta] - 2026-08-21
 

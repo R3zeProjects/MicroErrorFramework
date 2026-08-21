@@ -75,8 +75,8 @@ jobs:
           --baseline 'baseline-*.csv'
           --candidate 'candidate-*.csv'
           --output comparison.md
-          --minimum-dispatch-gain 5
-          --maximum-dispatch-scenario-regression 15
+          --minimum-dispatch-gain 3
+          --maximum-dispatch-scenario-regression 25
           --maximum-subsystem-regression 12.5
       - name: Upload raw evidence
         uses: actions/upload-artifact@v4

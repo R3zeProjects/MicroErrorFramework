@@ -453,13 +453,12 @@ namespace vosp::async
                 state = queue_state_.load(std::memory_order_acquire);
                 if (pending_from_state(state) == 0)
                     continue;
+                detail::helgrind_happens_after(&queue_state_);
                 if (tasks_[queue_head_]->bulk)
                 {
                     process_bulk(stop_token, std::move(consumer_lock), state);
                     continue;
                 }
-
-                detail::helgrind_happens_after(&queue_state_);
                 item.emplace(std::move(*tasks_[queue_head_]));
                 tasks_[queue_head_].reset();
                 queue_head_ = next_queue_index(queue_head_);
@@ -481,7 +480,6 @@ namespace vosp::async
         {
             std::array<std::optional<TaskItem>, bulk_claim_size_> batch;
             std::size_t claimed = 0;
-            detail::helgrind_happens_after(&queue_state_);
             const auto limit = std::min(
                 bulk_claim_size_, pending_from_state(state));
             while (claimed < limit && tasks_[queue_head_]->bulk)
