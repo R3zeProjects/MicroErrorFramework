@@ -102,12 +102,15 @@ namespace
     /** @brief Verifies the stable text and std::format representations. */
     bool test_error_formatting()
     {
+        // The unnamed value intentionally verifies the defensive fallback.
+        // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+        constexpr auto unknown_category = static_cast<Category>(77);
         const Error error{Category::NETWORK, 42, "connection refused"};
-        const Error unknown{static_cast<Category>(77), 9, "unknown category"};
+        const Error unknown{unknown_category, 9, "unknown category"};
 
         return check(category_name(Category::NETWORK) == "NETWORK",
                      "known category name") &&
-               check(category_name(static_cast<Category>(77)) == "UNKNOWN",
+               check(category_name(unknown_category) == "UNKNOWN",
                      "unknown category name") &&
                check(to_string(error) == "[NETWORK:42] connection refused",
                      "Error to_string representation") &&
