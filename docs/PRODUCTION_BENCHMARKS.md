@@ -36,7 +36,8 @@ build-production/MicroErrorSystemProductionBenchmark \
   --profile=full --suite=worker --operations=200000 --csv=worker.csv
 ```
 
-Supported suite values are `all`, `logger`, `worker`, and `register`. The
+Supported suite values are `all`, `logger`, `worker`, `register`, and
+`observability`. The
 default is `all`; the soak profile intentionally runs every subsystem.
 
 Run a 60-second soak for each subsystem:
@@ -79,10 +80,45 @@ the compiler's ASan runtime directory in `PATH`.
 - three independently routed categories;
 - duplicate, capacity, and missing-category errors;
 - concurrent successful `contains()` and `remove()` paths;
+- code-keyed `contains(code)`, owning `find(code)`, and `remove(code)` paths;
+- 1,024-entry owning snapshots under one- and four-producer contention;
 - long-message allocation accounting.
 - static `Error`/`LogEntry`, worker queue, and async record allocation metrics.
 
+### Error observability
+
+- successful `attempt()` boundaries with one and four producers;
+- exception conversion with allocation accounting;
+- successful `capture()` calls with verified zero sink writes;
+- failed `capture()` calls through exception conversion and logging;
+- `Result<T>` success no-op and failure logging paths.
+
 ## Latest full result
+
+### 0.4.0 observability API
+
+Seven full Release runs on 2026-08-21 used Clang 22.1.6 on an AMD Ryzen 7 PRO
+1700X (8 cores / 16 logical processors), with 100,000 operations per regular
+scenario. The table reports medians; exception scenarios are capped at 20,000
+operations and snapshots at 2,000 operations per run.
+
+| Scenario | Producers | Median throughput |
+| --- | ---: | ---: |
+| `attempt()` success | 1 / 4 | 83.64M / 110.35M ops/s |
+| `attempt()` exception conversion | 1 | 285,355 ops/s |
+| `capture()` success, no sink write | 1 / 4 | 105.70M / 102.83M ops/s |
+| `capture()` exception and log | 1 / 4 | 270,506 / 641,089 ops/s |
+| successful `Result<T>` no-op | 4 | 139.04M ops/s |
+| failed `Result<T>` log | 4 | 10.60M ops/s |
+| `contains(code)` hit | 8 | 10.66M ops/s |
+| owning `find(code)` hit | 8 | 10.95M ops/s |
+| `remove(code)` | 8 | 6.81M ops/s |
+| owning snapshot of 1,024 errors | 1 / 4 | 224,754 / 170,103 snapshots/s |
+
+These values measure API overhead with the benchmark's in-memory counting sink.
+Exception throughput includes C++ exception unwinding and diagnostic creation;
+snapshot throughput includes copying all 1,024 owned `Error` values. Results are
+not claims about filesystem or network logging latency.
 
 The latest version-to-version WorkerPool result is documented in
 [BENCHMARKS.md](BENCHMARKS.md) and the generated

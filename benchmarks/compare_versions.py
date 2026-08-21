@@ -56,6 +56,10 @@ def main() -> int:
         rows.append((key, old, new, (ratio - 1.0) * 100.0))
         if key[0] == "worker" and key[1].startswith("dispatch_"):
             dispatch_ratios.append(ratio)
+    candidate_only = [
+        (key, statistics.median(candidate[key]))
+        for key in sorted(candidate.keys() - baseline.keys())
+    ]
 
     if not dispatch_ratios:
         raise RuntimeError("no common WorkerPool dispatch scenarios were found")
@@ -107,6 +111,22 @@ def main() -> int:
             f"| {key[0]} | {key[1]} | {key[2]} | {key[3]} | {key[4]} | "
             f"{old:,.0f} | {new:,.0f} | {delta:+.1f}% |"
         )
+    if candidate_only:
+        report.extend([
+            "",
+            "## Candidate-only scenarios",
+            "",
+            "These APIs have no directly equivalent scenario in the baseline revision, "
+            "so only absolute candidate medians are reported and no regression gate is applied.",
+            "",
+            "| Subsystem | Scenario | Producers | Workers | Bytes | Candidate ops/s |",
+            "|---|---|---:|---:|---:|---:|",
+        ])
+        for key, throughput in candidate_only:
+            report.append(
+                f"| {key[0]} | {key[1]} | {key[2]} | {key[3]} | {key[4]} | "
+                f"{throughput:,.0f} |"
+            )
     text = "\n".join(report) + "\n"
     Path(args.output).write_text(text, encoding="utf-8")
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):

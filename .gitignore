@@ -69,3 +69,5 @@ vcpkg_installed/
 Testing/
 .cache/
 .verification/
+__pycache__/
+*.py[cod]

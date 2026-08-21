@@ -85,7 +85,7 @@ namespace
     struct Configuration
     {
         enum class Profile { QUICK, FULL, SOAK } profile = Profile::QUICK;
-        enum class Suite { ALL, LOGGER, WORKER, REGISTER } suite = Suite::ALL;
+        enum class Suite { ALL, LOGGER, WORKER, REGISTER, OBSERVABILITY } suite = Suite::ALL;
         std::size_t operations = 20'000;
         std::chrono::seconds soak_duration{30};
         std::optional<std::string> csv_path;
@@ -823,6 +823,54 @@ namespace
         reporter.report("register", "remove", 8, 0, 9, config.operations,
                         std::move(remove_stats));
 
+        MemoryRegister<Category::NETWORK> lookup_storage{config.operations, config.operations};
+        for (std::size_t index = 0; index < config.operations; ++index)
+            static_cast<void>(lookup_storage.add(Error{Category::NETWORK,
+                static_cast<std::uint32_t>(index), "lookup"}));
+        auto contains_code_stats = run_producers(8, config.operations,
+            [&](std::size_t, std::size_t index)
+            {
+                return lookup_storage.contains(static_cast<std::uint32_t>(index));
+            });
+        reporter.report("register", "contains_code_hit", 8, 0, 0, config.operations,
+                        std::move(contains_code_stats), {}, "code-key lookup; no Error construction");
+        auto find_stats = run_producers(8, config.operations,
+            [&](std::size_t, std::size_t index)
+            {
+                const auto found = lookup_storage.find(static_cast<std::uint32_t>(index));
+                return found && found->code() == index;
+            });
+        reporter.report("register", "find_code_hit", 8, 0, 0, config.operations,
+                        std::move(find_stats), {}, "returns an owning Error copy");
+        auto remove_code_stats = run_producers(8, config.operations,
+            [&](std::size_t, std::size_t index)
+            {
+                return static_cast<bool>(
+                    lookup_storage.remove(static_cast<std::uint32_t>(index)));
+            });
+        if (lookup_storage.size() != 0)
+            throw std::runtime_error{"register remove-by-code mismatch"};
+        reporter.report("register", "remove_code", 8, 0, 0, config.operations,
+                        std::move(remove_code_stats), {}, "code-key erase; no Error construction");
+
+        constexpr std::size_t snapshot_size = 1024;
+        const auto snapshot_operations = std::min<std::size_t>(config.operations, 2'000);
+        MemoryRegister<Category::NETWORK> snapshot_storage{snapshot_size, snapshot_size};
+        for (std::size_t index = 0; index < snapshot_size; ++index)
+            static_cast<void>(snapshot_storage.add(Error{Category::NETWORK,
+                static_cast<std::uint32_t>(index), "snapshot"}));
+        for (const auto producer_count : {std::size_t{1}, std::size_t{4}})
+        {
+            auto snapshot_stats = run_producers(producer_count, snapshot_operations,
+                [&](std::size_t, std::size_t)
+                {
+                    return snapshot_storage.snapshot().size() == snapshot_size;
+                });
+            reporter.report("register", "snapshot_1024", producer_count, 0, 8,
+                            snapshot_operations, std::move(snapshot_stats), {},
+                            "copies 1024 owning Error values per operation");
+        }
+
         MemoryRegister<Category::NETWORK> full_storage{1, 1};
         static_cast<void>(full_storage.add(Error{Category::NETWORK, 1, "full"}));
         auto capacity_stats = run_producers(4, duplicate_operations,
@@ -874,6 +922,99 @@ namespace
         reporter.report("memory", "log_entry_static_size", 1, 0, 0, 1,
                         std::move(entry_size_stats), AllocationResult{1, sizeof(LogEntry)},
                         "sizeof(LogEntry); excludes owned message allocation");
+    }
+
+    void observability_suite(Reporter& reporter, const Configuration& config)
+    {
+        const Error context{Category::NETWORK, 7001, "operation failed"};
+        for (const auto producer_count : {std::size_t{1}, std::size_t{4}})
+        {
+            auto attempt_stats = run_producers(producer_count, config.operations,
+                [&](std::size_t, std::size_t index)
+                {
+                    const auto result = attempt(context, [index] noexcept { return index; });
+                    return result && *result == index;
+                });
+            reporter.report("error", "attempt_success", producer_count, 0, 0,
+                            config.operations, std::move(attempt_stats), {},
+                            "exception boundary; successful value return");
+
+            CountingSink success_sink;
+            ParallelLogger success_logger{success_sink};
+            auto capture_stats = run_producers(producer_count, config.operations,
+                [&](std::size_t, std::size_t index)
+                {
+                    const auto result = success_logger.capture(
+                        context, [index] noexcept { return index; });
+                    return result && *result == index;
+                });
+            if (success_sink.records() != 0)
+                throw std::runtime_error{"successful capture emitted a record"};
+            reporter.report("logger", "capture_success", producer_count, 0, 0,
+                            config.operations, std::move(capture_stats), {},
+                            "successful operation; zero sink writes");
+        }
+
+        const auto failure_operations = std::min<std::size_t>(config.operations, 20'000);
+        AllocationResult attempt_allocations;
+        Statistics attempt_failure_stats;
+        {
+            AllocationScope scope;
+            attempt_failure_stats = run_producers(1, failure_operations,
+                [&](std::size_t, std::size_t)
+                {
+                    const auto result = attempt(context, []() -> std::size_t
+                    {
+                        throw std::runtime_error{"synthetic failure"};
+                    });
+                    return !result && result.error().code() == context.code() &&
+                           result.error().message() ==
+                               "operation failed: synthetic failure";
+                });
+            attempt_allocations = scope.finish();
+        }
+        reporter.report("error", "attempt_exception", 1, 0, 17, failure_operations,
+                        std::move(attempt_failure_stats), attempt_allocations,
+                        "throw/catch and owning diagnostic construction");
+
+        for (const auto producer_count : {std::size_t{1}, std::size_t{4}})
+        {
+            CountingSink failure_sink;
+            ParallelLogger failure_logger{failure_sink};
+            auto capture_failure_stats = run_producers(producer_count, failure_operations,
+                [&](std::size_t, std::size_t)
+                {
+                    const auto result = failure_logger.capture(context, []() -> std::size_t
+                    {
+                        throw std::runtime_error{"synthetic failure"};
+                    });
+                    return !result && result.error().message() ==
+                                          "operation failed: synthetic failure";
+                });
+            if (failure_sink.records() != failure_operations)
+                throw std::runtime_error{"failed capture record mismatch"};
+            reporter.report("logger", "capture_exception", producer_count, 0, 17,
+                            failure_operations, std::move(capture_failure_stats), {},
+                            "throw/catch, Error construction, and sink write");
+        }
+
+        CountingSink result_sink;
+        ParallelLogger result_logger{result_sink};
+        const Result<std::size_t> success{42};
+        auto success_result_stats = run_producers(4, config.operations,
+            [&](std::size_t, std::size_t) { return result_logger.error(success); });
+        if (result_sink.records() != 0)
+            throw std::runtime_error{"successful Result emitted a record"};
+        reporter.report("logger", "result_success_noop", 4, 0, 0, config.operations,
+                        std::move(success_result_stats), {}, "zero sink writes");
+
+        const Result<std::size_t> failure{std::unexpect, context};
+        auto failure_result_stats = run_producers(4, config.operations,
+            [&](std::size_t, std::size_t) { return result_logger.error(failure); });
+        if (result_sink.records() != config.operations)
+            throw std::runtime_error{"failed Result record mismatch"};
+        reporter.report("logger", "result_failure_log", 4, 0, 16, config.operations,
+                        std::move(failure_result_stats), {}, "prebuilt failure and sink write");
     }
 
     void soak_suite(Reporter& reporter, const Configuration& config)
@@ -999,6 +1140,8 @@ namespace
             else if (argument == "--suite=logger") config.suite = Configuration::Suite::LOGGER;
             else if (argument == "--suite=worker") config.suite = Configuration::Suite::WORKER;
             else if (argument == "--suite=register") config.suite = Configuration::Suite::REGISTER;
+            else if (argument == "--suite=observability")
+                config.suite = Configuration::Suite::OBSERVABILITY;
             else if (argument.starts_with("--duration="))
                 config.soak_duration = std::chrono::seconds{
                     std::stoll(std::string{argument.substr(11)})};
@@ -1032,6 +1175,9 @@ int main(int argc, char** argv)
         if (config.suite == Configuration::Suite::ALL ||
             config.suite == Configuration::Suite::REGISTER)
             register_suite(reporter, config);
+        if (config.suite == Configuration::Suite::ALL ||
+            config.suite == Configuration::Suite::OBSERVABILITY)
+            observability_suite(reporter, config);
         return 0;
     }
     catch (const std::exception& exception)
