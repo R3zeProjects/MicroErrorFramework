@@ -64,6 +64,11 @@ CTest использует label `api-contract`, а compile-fail cases допо�
 | buffered `Sink` | producer-local buffers и serialized stream output |
 | `WorkerPool` | submission, wait, clear и shutdown thread-safe |
 
+WorkerPool использует C++ atomic/futex synchronization. В Valgrind job включён
+`ENABLE_HELGRIND_ANNOTATIONS`, потому что Helgrind требует явного описания
+custom happens-before edges. В обычных сборках эти annotations отключены;
+независимым race gate остаётся ThreadSanitizer.
+
 ## WorkerPool
 
 - worker count и queue capacity находятся в `[1, 1024]`;
