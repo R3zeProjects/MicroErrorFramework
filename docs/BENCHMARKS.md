@@ -14,6 +14,16 @@
 
 ## Result
 
+### 0.4.0 register and observability comparison
+
+The 2026-08-21 feature comparison rebuilt the immutable `v0.3.1-beta` tag and
+the `0.4.0-beta` candidate with Clang 22.1.6 in Release mode. Seven alternating
+runs measured a **57.1%** register-subsystem geometric-mean gain while the full
+candidate passed bounded WorkerPool and subsystem regression gates.
+
+The scenario table and methodology are recorded in
+[`v0.3.1-v0.4.0-register-comparison-2026-08-21.md`](../benchmark-results/v0.3.1-v0.4.0-register-comparison-2026-08-21.md).
+
 ### 0.3.1 WorkerPool patch comparison
 
 The 2026-08-21 patch comparison rebuilt the immutable `v0.3.0-beta` tag and

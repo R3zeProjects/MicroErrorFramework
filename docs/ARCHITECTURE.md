@@ -31,6 +31,10 @@ compares all three fields. `Result<T>` is an alias for
 `std::expected<T, Error>`, and `OperationResult` represents an operation that
 returns no value on success.
 
+`attempt()` is the exception boundary for operations that must enter the
+expected-based error channel. It is a direct function rather than a new
+exception hierarchy or execution abstraction.
+
 ### Registers and routing
 
 `IRegister` defines the category-specific `add`, `remove`, and `category`
@@ -38,8 +42,10 @@ contract. `CategoryRegister<Category>` supplies the category implementation for
 custom registers.
 
 `Register<Category, Policy>` is the built-in bounded implementation. It uses
-`std::unordered_set` storage, rejects errors from another category, and reports
-duplicate, missing, and capacity failures through `OperationResult`.
+code-keyed `std::unordered_map` storage, rejects errors from another category,
+and reports duplicate, missing, and capacity failures through `OperationResult`.
+Codes are unique inside a category. Observation returns owning values through
+`find()` and `snapshot()` instead of references that could outlive a lock.
 `register_policy::ThreadSafe` is the default; `SingleThreaded` removes internal
 locking when access is externally serialized.
 
@@ -74,6 +80,17 @@ destruction. Sink callbacks execute outside the sink-list mutex.
 `Sink<sink_policy::Immediate>` writes each record immediately. The buffered
 policy maintains a buffer per producer and serializes only stream writes.
 Explicit `flush()` is required when the caller needs final delivery status.
+`Logger::capture()` directly composes exception conversion and best-effort
+failure publication without coupling the error core to a persistence format.
+
+### Ecosystem boundary
+
+MicroErrorFramework owns error values, registration, routing, task execution,
+and event publication. It deliberately does not own a durable log-file format,
+filesystem persistence, or generic value serialization. Those capabilities may
+be supplied by a separate ecosystem library through `ILogSink`; keeping them at
+the edge preserves the header-only runtime and avoids forcing filesystem or
+format dependencies on every consumer.
 
 ### Worker pool
 

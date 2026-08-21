@@ -13,6 +13,8 @@ found. This document therefore does not invent an unverifiable external link.
 - `std::to_chars`-based formatting that avoids locale and stream overhead;
 - short critical sections around shared state;
 - ring-buffer and registry ownership patterns.
+- exception-to-error capture and direct failed-result logging;
+- code-based registry lookup and owning snapshots.
 
 The snapshot was also built with Clang 22.1.6 in C++23 Release mode. Its normal
 configuration passed 10/10 CTest tests. Enabling its own `MESLS_WERROR` option
@@ -27,6 +29,10 @@ vectors that swap between the producer side and backend consumer. In the
 200,000-record allocation workload this reduced observed allocation bytes from
 33,860,624 to 27,307,808 (−19.4%).
 
+For `0.4.0-beta`, the relevant error-control capabilities were adapted to the
+existing MEF API: `attempt()`, `Logger::capture()`, direct failed-Result logging,
+and code-keyed owning registry queries. They were not copied as MESLS wrappers.
+
 ## Ideas rejected
 
 - Returning registry references after releasing a lock was rejected because a
@@ -36,7 +42,11 @@ vectors that swap between the producer side and backend consumer. In the
   `clear_queue()`.
 - A general spin lock was rejected because five-run medians reduced overall
   dispatch gain and regressed bulk throughput.
+- `StringVariable`, `.mlog`, `FSaver`, and generic value serialization were not
+  moved into MEF. They belong to a separate persistence/serialization library
+  that can integrate through `ILogSink` as part of the same ecosystem.
 
 The final bulk optimization is limited to callbacks submitted through the
 explicit bulk API, has a fixed claim bound of 16, and is documented as a public
-0.3.x concurrency contract.
+0.3.x concurrency contract. The owning registry observation rules are a public
+0.4.x concurrency contract.

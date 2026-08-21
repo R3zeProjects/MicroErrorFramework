@@ -92,6 +92,19 @@ The default `register_policy::ThreadSafe` protects direct concurrent access.
 Use `register_policy::SingleThreaded` only when access is externally serialized,
 for example by a multi-threaded `System`.
 
+Codes are unique within one category register. Queries return owning values,
+never references into locked storage:
+
+```cpp
+const auto error = network.find(1001); // std::optional<Error>
+const auto current = network.snapshot(); // std::vector<Error>
+const OperationResult removed_one = network.remove(1001);
+const std::size_t removed = network.clear();
+```
+
+`find()` and `snapshot()` remain valid after another thread removes or clears
+the corresponding registry entries. Snapshot iteration order is unspecified.
+
 ## Route errors with Handler
 
 `Handler` is non-owning. Every register passed to it must outlive the handler.
@@ -222,6 +235,20 @@ Result<void> initialize()
 }
 ```
 
+Use `attempt()` at an exception boundary to preserve the framework's
+`std::expected` error channel:
+
+```cpp
+const Error context{Category::DATABASE, 2001, "database query"};
+Result<int> rows = attempt(context, []() -> int {
+    return run_database_query(); // exceptions become Error
+});
+```
+
+For a `std::exception`, its diagnostic is appended to the context message.
+Unknown exceptions retain the supplied `Error` unchanged. A callable returning
+a reference is rejected because `std::expected` cannot own a reference value.
+
 ## Logging
 
 The logger is separate from registers: registers own error storage, while the
@@ -245,6 +272,20 @@ Output:
 ```text
 [ERROR] [NETWORK] code=1001 message=Connection refused
 ```
+
+`Logger::capture()` combines `attempt()` with best-effort failure logging, and
+failed `Result<T>` values can be logged directly:
+
+```cpp
+Result<int> rows = logger.capture(
+    Error{Category::DATABASE, 2001, "database query"},
+    [] { return run_database_query(); });
+
+logger.error(rows); // no-op on success; logs rows.error() on failure
+```
+
+Sink rejection or an exception thrown by a sink never replaces the operation
+error returned by `capture()`.
 
 The default `Sink` writes every record immediately. For a shared stream with
 several producers, select the buffered sink policy:

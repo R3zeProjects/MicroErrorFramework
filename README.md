@@ -10,7 +10,7 @@ particular operating system or domain.
 > **Main idea:** an error-control and logging contour independent of the host system.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.3.1--beta-orange)
+![API](https://img.shields.io/badge/API-0.4.0--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -30,6 +30,7 @@ control layer in larger C++ systems.
   `std::expected`;
 - category-specific registers with `IRegister` and `CategoryRegister`;
 - unified `Register<Category, Policy>` with bounded capacity;
+- owning register lookup by code, snapshots, and explicit bulk clearing;
 - category routing through `Handler` and `ConcurrentHandler`;
 - compile-time single-threaded, multi-threaded, and asynchronous systems;
 - `WorkerPool` with bounded workers and bounded queue;
@@ -37,6 +38,7 @@ control layer in larger C++ systems.
 - cooperative cancellation with `std::stop_token`;
 - queue cleanup and configurable drain/cancel shutdown behavior;
 - extensible logger with custom sinks and compile-time filtering policies;
+- exception-to-`Result` capture with direct failure logging;
 - RAII-based ownership and safe asynchronous lifetime handling;
 - CTest, stress tests, AddressSanitizer, UndefinedBehaviorSanitizer,
   ThreadSanitizer, LibFuzzer, Valgrind, coverage, and Callgrind workflows;
@@ -49,6 +51,7 @@ All values below are real local Release measurements, not theoretical claims.
 | Feature | Measured workload | Result |
 | --- | --- | ---: |
 | Typed register | 100,000 single-threaded inserts | **4.62022M operations/s** |
+| Register subsystem gain | Seven-run geometric mean vs `v0.3.1-beta` | **+57.1%** |
 | Concurrent category routing | 99,999 inserts over 3 workers | **5.89096M operations/s** |
 | Asynchronous error system | 1,000 completed operations | **923,361 operations/s** |
 | Tracked worker tasks | `submit()`, 4 workers | **1.74017M tasks/s** |
@@ -108,8 +111,11 @@ The `0.3.1-beta` comparison uses seven alternating Release runs against the
 immutable `v0.3.0-beta` tag. It measured a 15.3% dispatch geometric-mean gain;
 details and recorded regressions are in
 [the patch comparison](benchmark-results/v0.3.0-v0.3.1-worker-comparison-2026-08-21.md).
+The `0.4.0-beta` register comparison measured a 57.1% subsystem geometric-mean
+gain; see [the feature comparison](benchmark-results/v0.3.1-v0.4.0-register-comparison-2026-08-21.md).
 The Performance regression Action runs automatically for relevant main-branch
-pushes and pull requests, enforcing improvement and bounded-regression gates.
+pushes and pull requests. Feature releases are checked against `v0.3.1-beta`
+with bounded scenario and subsystem regression gates.
 
 ## Architecture
 
@@ -188,7 +194,7 @@ cmake -S consumer -B consumer/build \
 ```
 
 ```cmake
-find_package(vosp 0.1 CONFIG REQUIRED)
+find_package(vosp 0.4.0 CONFIG REQUIRED)
 target_link_libraries(my_target PRIVATE vosp::vosp)
 ```
 
@@ -196,6 +202,8 @@ target_link_libraries(my_target PRIVATE vosp::vosp)
 
 ```cpp
 #include <vosp.hpp>
+#include <iostream>
+#include <stdexcept>
 
 using namespace vosp::error;
 
@@ -217,6 +225,9 @@ if (!result) {
 if (network.contains(error)) {
     const OperationResult removed = system.remove(error);
 }
+
+const auto stored = network.find(1001);
+const auto current_errors = network.snapshot();
 ```
 
 For value-returning operations:
@@ -231,6 +242,22 @@ const Result<int> result = read_attempts();
 if (result) {
     const int attempts = *result;
 }
+```
+
+At exception boundaries, preserve the same `Result<T>` channel and optionally
+log the converted failure:
+
+```cpp
+vosp::logger::Sink sink{std::cerr};
+vosp::logger::Logger logger{sink};
+
+Result<int> rows = logger.capture(
+    Error{Category::DATABASE, 2001, "database query"},
+    []() -> int {
+        throw std::runtime_error{"timeout"};
+    });
+
+// rows.error(): [DATABASE:2001] database query: timeout
 ```
 
 ## Worker pool
@@ -597,7 +624,7 @@ MicroErrorFramework/
 
 ## Versioning
 
-The current release is **`0.3.1-beta`**. The numeric API version follows this
+The current release is **`0.4.0-beta`**. The numeric API version follows this
 project policy:
 
 - `x.0.0` — a complete system redesign or stable generation release;
@@ -609,7 +636,7 @@ first stable generation.
 
 ## Current limitations
 
-- The API is version `0.3.1-beta` and may evolve before `1.0.0`.
+- The API is version `0.4.0-beta` and may evolve before `1.0.0`.
 - Error systems reference externally owned registers; logger sinks are either
   non-owning references or logger-owned `std::shared_ptr` instances.
 - A running worker task cannot be forcefully interrupted safely.

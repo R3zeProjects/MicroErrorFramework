@@ -2,7 +2,7 @@
 
 ## Status and compatibility
 
-The current release line is `0.3.x-beta`. The public API is every declaration
+The current release line is `0.4.x-beta`. The public API is every declaration
 reachable from `include/vosp.hpp`; implementation details under `detail` are not
 public. Before 1.0, minor releases may change source compatibility when the
 change is recorded in `CHANGELOG.md`. Patch releases remain source compatible:
@@ -14,7 +14,7 @@ so all consumers must rebuild after an upgrade. A 1.0 release requires a
 documented API freeze, green supported-compiler CI, Linux concurrency gates and
 release-candidate soak evidence.
 
-## Stable 0.3.x source contracts
+## Stable 0.4.x source contracts
 
 - `<vosp.hpp>` is the umbrella source entry point in both the source tree and
   the installed package.
@@ -27,6 +27,11 @@ release-candidate soak evidence.
 - `Result<T>` is `std::expected<T, Error>` and `OperationResult` is
   `Result<void>`. Expected operational failures use these result types rather
   than exceptions.
+- `attempt(error, function)` accepts a nullary callable returning a value or
+  `void`. It converts `std::exception` into the supplied category/code with an
+  appended diagnostic message and maps unknown exceptions to the supplied Error.
+- A register owns at most one Error for each numeric code. `find()` and
+  `snapshot()` return owning copies that remain valid after concurrent mutation.
 - `Register`, `System`, `Sink`, and `Logger` are the primary policy-selected
   types. The specialized names retained for migration are exact aliases and do
   not add storage, allocation, virtual dispatch or runtime mode selection.
@@ -74,7 +79,7 @@ includes from hiding packaging defects.
 | Type | Concurrent operations | Contract |
 | --- | --- | --- |
 | `Error` | const reads | safe after publication; no mutating API |
-| default `Register` | `add`, `remove`, `contains`, `size`, `reserve` | internally serialized |
+| default `Register` | `add`, `remove(error/code)`, `contains`, `find`, `snapshot`, `clear`, `size`, `reserve` | internally serialized; observations own their values |
 | single-threaded `System` | none | caller provides synchronization |
 | multi-threaded `System` | `add`, `remove` | one routing lock per configured register |
 | `WorkerPool` | submission, observation, `wait`, `clear_queue`, `shutdown` | safe; shutdown is idempotent and serializes joining |
