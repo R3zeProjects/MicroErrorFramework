@@ -1,0 +1,66 @@
+name: Performance regression
+
+on:
+  workflow_dispatch:
+    inputs:
+      operations:
+        description: Operations per production benchmark scenario
+        required: true
+        default: '200000'
+
+permissions:
+  contents: read
+
+jobs:
+  compare-legacy:
+    name: v0.3 candidate vs v0.2.5 legacy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v5
+        with:
+          path: candidate
+      - name: Checkout legacy baseline
+        uses: actions/checkout@v5
+        with:
+          ref: legacy/0.2.5-beta
+          path: baseline
+      - name: Install build tools
+        run: candidate/.github/scripts/install-apt-packages.sh ninja-build
+      - name: Configure and build both revisions
+        run: |
+          cmake -G Ninja -S baseline -B baseline/build \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_BENCHMARKS=ON
+          cmake --build baseline/build --parallel
+          cmake -G Ninja -S candidate -B candidate/build \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_BENCHMARKS=ON
+          cmake --build candidate/build --parallel
+      - name: Run five alternating samples
+        env:
+          OPERATIONS: ${{ inputs.operations }}
+        run: |
+          for sample in 1 2 3 4 5; do
+            baseline/build/MicroErrorSystemProductionBenchmark \
+              --profile=full --operations="$OPERATIONS" \
+              --csv="baseline-$sample.csv" >/dev/null
+            candidate/build/MicroErrorSystemProductionBenchmark \
+              --profile=full --operations="$OPERATIONS" \
+              --csv="candidate-$sample.csv" >/dev/null
+          done
+      - name: Compare medians and enforce target
+        run: >-
+          python3 candidate/benchmarks/compare_versions.py
+          --baseline 'baseline-*.csv'
+          --candidate 'candidate-*.csv'
+          --output comparison.md
+          --minimum-dispatch-gain 70
+      - name: Upload raw evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-performance-${{ github.run_id }}
+          path: |
+            baseline-*.csv
+            candidate-*.csv
+            comparison.md
+          retention-days: 30

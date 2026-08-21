@@ -44,6 +44,11 @@ Sink может передаваться logger по ссылке или чер�
 queue. Максимум — 1 024 workers и 1 024 queued tasks. Полная очередь применяет
 blocking backpressure.
 
+Producer и consumer используют независимые короткие critical sections.
+Pending/active/stopping state упакован в один атомарный счётчик, ожидание
+реализовано через `std::atomic::wait`. Обычные задачи выбираются по одной;
+`dispatch_bulk()` позволяет worker взять bounded-группу до 16 callbacks.
+
 ## Потоки управления
 
 ```text
@@ -60,6 +65,7 @@ System<Async> -> external executor (например WorkerPool)
 - parallel logger требует thread-safe sink;
 - buffered sink требует явного `flush()` для проверки delivery status;
 - running task нельзя безопасно остановить принудительно;
+- выбранная bulk-группа считается active до полного завершения;
 - worker-initiated shutdown только сигнализирует остановку, owner выполняет join.
 
 ## Точки расширения

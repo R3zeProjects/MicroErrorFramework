@@ -3,14 +3,15 @@
 #include "vosp_error.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
-#include <condition_variable>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <functional>
 #include <future>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -97,11 +98,8 @@ namespace vosp::async
             }
             catch (...)
             {
-                {
-                    const std::lock_guard lock{mutex_};
-                    stopping_ = true;
-                }
-                task_available_.notify_all();
+                queue_state_.fetch_or(stopping_mask_, std::memory_order_release);
+                queue_state_.notify_all();
                 workers_.clear();
                 throw;
             }
@@ -161,7 +159,8 @@ namespace vosp::async
          * @brief Moves a batch of fire-and-forget tasks into the bounded queue.
          * @param tasks Callbacks consumed in order; accepted elements are moved from.
          * @return Number of callbacks accepted before completion or shutdown.
-         * @note Uses grouped queue refills to reduce producer-side lock contention.
+         * @note Uses grouped queue refills and claims up to 16 bulk callbacks per
+         * worker. Claimed callbacks are active and no longer queue-cancellable.
          */
         [[nodiscard]] std::size_t dispatch_bulk(std::span<Task> tasks)
         {
@@ -170,40 +169,34 @@ namespace vosp::async
             {
                 std::size_t enqueued = 0;
                 {
-                    std::unique_lock lock{mutex_};
-                    const auto remaining = tasks.size() - accepted;
-                    const auto refill_size = std::min(
-                        remaining,
-                        std::max<std::size_t>(1, std::min<std::size_t>(32, queue_capacity_ / 4)));
-                    space_available_.wait(lock, [this, refill_size]
-                    {
-                        return stopping_ ||
-                               queue_capacity_ - pending_tasks_ >= refill_size;
-                    });
-
-                    if (stopping_)
+                    auto state = wait_for_space();
+                    if (is_stopping_state(state))
                     {
                         return accepted;
                     }
 
-                    enqueued = std::min(remaining, queue_capacity_ - pending_tasks_);
+                    const std::lock_guard producer_lock{producer_mutex_};
+                    state = queue_state_.load(std::memory_order_acquire);
+                    if (is_stopping_state(state)) return accepted;
+
+                    const auto available = queue_capacity_ - pending_from_state(state);
+                    if (available == 0) continue;
+
+                    enqueued = std::min(tasks.size() - accepted, available);
                     for (std::size_t index = 0; index < enqueued; ++index)
                     {
                         tasks_[queue_tail_].emplace(
-                            TaskItem{std::move(tasks[accepted + index]), std::nullopt});
+                            TaskItem{std::move(tasks[accepted + index]), std::nullopt, true});
                         queue_tail_ = next_queue_index(queue_tail_);
-                        ++pending_tasks_;
                     }
                     accepted += enqueued;
+                    queue_state_.fetch_add(enqueued, std::memory_order_release);
                 }
 
-                if (enqueued == 1)
+                if (waiting_workers_.load(std::memory_order_relaxed) != 0)
                 {
-                    task_available_.notify_one();
-                }
-                else
-                {
-                    task_available_.notify_all();
+                    if (enqueued == 1) queue_state_.notify_one();
+                    else queue_state_.notify_all();
                 }
             }
 
@@ -225,12 +218,14 @@ namespace vosp::async
         /** @brief Blocks until no queued or executing tasks remain. */
         void wait()
         {
-            std::unique_lock lock{mutex_};
-            idle_.wait(lock, [this]
+            while (!is_idle())
             {
-                return pending_tasks_ == 0 &&
-                       active_tasks_.load(std::memory_order_relaxed) == 0;
-            });
+                waiting_for_idle_.fetch_add(1, std::memory_order_relaxed);
+                const auto epoch = completion_epoch_.load(std::memory_order_acquire);
+                if (!is_idle())
+                    completion_epoch_.wait(epoch, std::memory_order_acquire);
+                waiting_for_idle_.fetch_sub(1, std::memory_order_relaxed);
+            }
         }
 
     private:
@@ -239,37 +234,60 @@ namespace vosp::async
             template<typename Callback, typename CompletionTag>
                 requires std::same_as<std::remove_cvref_t<Callback>, Task> ||
                          std::same_as<std::remove_cvref_t<Callback>, CancellableTask>
-            TaskItem(Callback&& value, CompletionTag completion_tag)
+            TaskItem(Callback&& value, CompletionTag completion_tag, bool bulk = false)
                 : callback{std::in_place_type<std::remove_cvref_t<Callback>>,
                            std::forward<Callback>(value)},
-                  completion{completion_tag}
+                  completion{completion_tag},
+                  bulk{bulk}
             {
             }
 
             std::variant<Task, CancellableTask> callback;
             std::optional<std::promise<OperationResult>> completion;
+            bool bulk = false;
         };
 
         void enqueue(TaskItem item)
         {
+            while (true)
             {
-                std::unique_lock lock{mutex_};
-                space_available_.wait(lock, [this]
-                {
-                    return stopping_ || pending_tasks_ < queue_capacity_;
-                });
-
-                if (stopping_)
-                {
+                auto state = wait_for_space();
+                if (is_stopping_state(state))
                     throw std::runtime_error("Cannot submit task after worker pool shutdown");
+
+                {
+                    const std::lock_guard producer_lock{producer_mutex_};
+                    state = queue_state_.load(std::memory_order_acquire);
+                    if (is_stopping_state(state))
+                        throw std::runtime_error("Cannot submit task after worker pool shutdown");
+                    if (pending_from_state(state) == queue_capacity_) continue;
+
+                    tasks_[queue_tail_].emplace(std::move(item));
+                    queue_tail_ = next_queue_index(queue_tail_);
+                    queue_state_.fetch_add(1, std::memory_order_release);
                 }
 
-                tasks_[queue_tail_].emplace(std::move(item));
-                queue_tail_ = next_queue_index(queue_tail_);
-                ++pending_tasks_;
+                if (waiting_workers_.load(std::memory_order_relaxed) != 0)
+                    queue_state_.notify_one();
+                return;
             }
+        }
 
-            task_available_.notify_one();
+        [[nodiscard]] std::size_t wait_for_space() noexcept
+        {
+            auto state = queue_state_.load(std::memory_order_acquire);
+            while (!is_stopping_state(state) &&
+                   pending_from_state(state) == queue_capacity_)
+            {
+                waiting_producers_.fetch_add(1, std::memory_order_relaxed);
+                const auto observed = queue_state_.load(std::memory_order_acquire);
+                if (!is_stopping_state(observed) &&
+                    pending_from_state(observed) == queue_capacity_)
+                    queue_state_.wait(observed, std::memory_order_acquire);
+                waiting_producers_.fetch_sub(1, std::memory_order_relaxed);
+                state = queue_state_.load(std::memory_order_acquire);
+            }
+            return state;
         }
 
     public:
@@ -292,21 +310,19 @@ namespace vosp::async
         /** @brief Returns the number of tasks waiting to start. */
         [[nodiscard]] std::size_t pending_tasks() const noexcept
         {
-            const std::lock_guard lock{mutex_};
-            return pending_tasks_;
+            return pending_from_state(queue_state_.load(std::memory_order_acquire));
         }
 
         /** @brief Returns whether the pool rejects new submissions. */
         [[nodiscard]] bool is_stopping() const noexcept
         {
-            const std::lock_guard lock{mutex_};
-            return stopping_;
+            return is_stopping_state(queue_state_.load(std::memory_order_acquire));
         }
 
-        /** @brief Returns the number of tasks currently executing. */
+        /** @brief Returns tasks claimed for execution, including bulk chunks. */
         [[nodiscard]] std::size_t active_tasks() const noexcept
         {
-            return active_tasks_.load(std::memory_order_relaxed);
+            return active_from_state(queue_state_.load(std::memory_order_acquire));
         }
 
         /**
@@ -315,15 +331,7 @@ namespace vosp::async
          */
         [[nodiscard]] std::size_t clear_queue() noexcept
         {
-            std::size_t cancelled = 0;
-            {
-                const std::lock_guard lock{mutex_};
-                cancelled = cancel_pending_locked();
-            }
-
-            space_available_.notify_all();
-            idle_.notify_all();
-            return cancelled;
+            return cancel_pending();
         }
 
         /**
@@ -350,7 +358,7 @@ namespace vosp::async
 
             std::vector<std::jthread> workers_to_join;
             {
-                const std::lock_guard lock{mutex_};
+                const std::lock_guard lock{workers_mutex_};
                 workers_to_join.swap(workers_);
             }
             for (auto& worker : workers_to_join)
@@ -373,21 +381,18 @@ namespace vosp::async
         void signal_shutdown(ShutdownMode mode) noexcept
         {
             {
-                const std::lock_guard lock{mutex_};
-                stopping_ = true;
-                if (mode == ShutdownMode::CANCEL_PENDING)
-                {
-                    static_cast<void>(cancel_pending_locked());
-                    for (auto& worker : workers_)
-                    {
-                        worker.request_stop();
-                    }
-                }
+                const std::lock_guard producer_lock{producer_mutex_};
+                queue_state_.fetch_or(stopping_mask_, std::memory_order_release);
             }
 
-            task_available_.notify_all();
-            space_available_.notify_all();
-            idle_.notify_all();
+            if (mode == ShutdownMode::CANCEL_PENDING)
+            {
+                static_cast<void>(cancel_pending());
+                const std::lock_guard workers_lock{workers_mutex_};
+                for (auto& worker : workers_) worker.request_stop();
+            }
+
+            queue_state_.notify_all();
         }
 
         void run(std::stop_token stop_token)
@@ -395,38 +400,60 @@ namespace vosp::async
             current_worker_pool_ = this;
             while (true)
             {
-                std::optional<TaskItem> item;
+                std::array<std::optional<TaskItem>, bulk_claim_size_> batch;
+                std::size_t claimed = 0;
+                auto state = queue_state_.load(std::memory_order_acquire);
+                while (pending_from_state(state) == 0 && !is_stopping_state(state))
                 {
-                    std::unique_lock lock{mutex_};
-                    task_available_.wait(lock, [this]
-                    {
-                        return stopping_ || pending_tasks_ != 0;
-                    });
+                    waiting_workers_.fetch_add(1, std::memory_order_relaxed);
+                    const auto observed = queue_state_.load(std::memory_order_acquire);
+                    if (pending_from_state(observed) == 0 &&
+                        !is_stopping_state(observed))
+                        queue_state_.wait(observed, std::memory_order_acquire);
+                    waiting_workers_.fetch_sub(1, std::memory_order_relaxed);
+                    state = queue_state_.load(std::memory_order_acquire);
+                }
 
-                    if (pending_tasks_ == 0)
-                    {
-                        if (stopping_)
-                        {
-                            current_worker_pool_ = nullptr;
-                            return;
-                        }
+                if (pending_from_state(state) == 0 && is_stopping_state(state))
+                {
+                    current_worker_pool_ = nullptr;
+                    return;
+                }
 
+                {
+                    const std::lock_guard consumer_lock{consumer_mutex_};
+                    state = queue_state_.load(std::memory_order_acquire);
+                    if (pending_from_state(state) == 0)
+                    {
                         continue;
                     }
 
-                    item.emplace(std::move(*tasks_[queue_head_]));
-                    tasks_[queue_head_].reset();
-                    queue_head_ = next_queue_index(queue_head_);
-                    --pending_tasks_;
-                    active_tasks_.fetch_add(1, std::memory_order_relaxed);
+                    const bool claim_bulk = tasks_[queue_head_]->bulk;
+                    const auto limit = claim_bulk
+                        ? std::min(bulk_claim_size_, pending_from_state(state))
+                        : std::size_t{1};
+                    while (claimed < limit &&
+                           tasks_[queue_head_]->bulk == claim_bulk)
+                    {
+                        batch[claimed].emplace(std::move(*tasks_[queue_head_]));
+                        tasks_[queue_head_].reset();
+                        queue_head_ = next_queue_index(queue_head_);
+                        ++claimed;
+                    }
+                    queue_state_.fetch_add(
+                        claimed * (active_unit_ - 1), std::memory_order_acq_rel);
                 }
 
-                space_available_.notify_one();
-                execute(*item, stop_token);
+                if (waiting_producers_.load(std::memory_order_relaxed) != 0)
+                    queue_state_.notify_one();
+                for (std::size_t index = 0; index < claimed; ++index)
+                    execute(*batch[index], stop_token, false);
+                finish_tasks(claimed);
             }
         }
 
-        void execute(TaskItem& item, std::stop_token stop_token) noexcept
+        void execute(
+            TaskItem& item, std::stop_token stop_token, bool finish = true) noexcept
         {
             std::optional<OperationResult> task_result;
             std::exception_ptr task_exception;
@@ -452,11 +479,9 @@ namespace vosp::async
                 {
                     failed_dispatches_.fetch_add(1, std::memory_order_relaxed);
                 }
-                finish_task();
+                if (finish) finish_task();
                 return;
             }
-
-            finish_task();
 
             try
             {
@@ -475,18 +500,35 @@ namespace vosp::async
                 // retrieved exactly once before enqueueing.
                 std::terminate();
             }
+            if (finish) finish_task();
         }
 
         void finish_task() noexcept
         {
-            if (active_tasks_.fetch_sub(1, std::memory_order_relaxed) == 1)
-            {
-                const std::lock_guard lock{mutex_};
-                if (pending_tasks_ == 0)
-                {
-                    idle_.notify_all();
-                }
-            }
+            finish_tasks(1);
+        }
+
+        void finish_tasks(std::size_t count) noexcept
+        {
+            const auto previous_state =
+                queue_state_.fetch_sub(count * active_unit_, std::memory_order_release);
+            if (active_from_state(previous_state) == count &&
+                pending_from_state(previous_state) == 0)
+                notify_idle_waiters();
+        }
+
+        [[nodiscard]] bool is_idle() const noexcept
+        {
+            const auto state = queue_state_.load(std::memory_order_acquire);
+            return pending_from_state(state) == 0 &&
+                   active_from_state(state) == 0;
+        }
+
+        void notify_idle_waiters() noexcept
+        {
+            if (waiting_for_idle_.load(std::memory_order_relaxed) == 0) return;
+            completion_epoch_.fetch_add(1, std::memory_order_release);
+            completion_epoch_.notify_all();
         }
 
         [[nodiscard]] static std::size_t validate_queue_capacity(std::size_t capacity)
@@ -504,10 +546,28 @@ namespace vosp::async
             return index + 1 == queue_capacity_ ? 0 : index + 1;
         }
 
-        [[nodiscard]] std::size_t cancel_pending_locked() noexcept
+        [[nodiscard]] static std::size_t pending_from_state(std::size_t state) noexcept
         {
-            const auto cancelled = pending_tasks_;
-            while (pending_tasks_ != 0)
+            return state & pending_mask_;
+        }
+
+        [[nodiscard]] static bool is_stopping_state(std::size_t state) noexcept
+        {
+            return (state & stopping_mask_) != 0;
+        }
+
+        [[nodiscard]] static std::size_t active_from_state(std::size_t state) noexcept
+        {
+            return (state & active_mask_) >> active_shift_;
+        }
+
+        [[nodiscard]] std::size_t cancel_pending() noexcept
+        {
+            const std::scoped_lock queue_locks{producer_mutex_, consumer_mutex_};
+            const auto cancelled = pending_from_state(
+                queue_state_.load(std::memory_order_acquire));
+            auto remaining = cancelled;
+            while (remaining != 0)
             {
                 auto& item = tasks_[queue_head_];
                 if (item->completion)
@@ -530,28 +590,49 @@ namespace vosp::async
 
                 item.reset();
                 queue_head_ = next_queue_index(queue_head_);
-                --pending_tasks_;
+                --remaining;
             }
             queue_tail_ = queue_head_;
+
+            if (cancelled != 0)
+            {
+                queue_state_.fetch_sub(cancelled, std::memory_order_release);
+                if (active_from_state(queue_state_.load(std::memory_order_acquire)) == 0)
+                    notify_idle_waiters();
+                queue_state_.notify_all();
+            }
             return cancelled;
         }
 
-        mutable std::mutex mutex_;
-        std::condition_variable task_available_;
-        std::condition_variable space_available_;
-        std::condition_variable idle_;
+        static constexpr std::size_t count_bits_ = 11;
+        static constexpr std::size_t bulk_claim_size_ = 16;
+        static constexpr std::size_t active_shift_ = count_bits_;
+        static constexpr auto stopping_mask_ =
+            std::size_t{1} << (std::numeric_limits<std::size_t>::digits - 1);
+        static constexpr auto pending_mask_ = (std::size_t{1} << count_bits_) - 1;
+        static constexpr auto active_unit_ = std::size_t{1} << active_shift_;
+        static constexpr auto active_mask_ = pending_mask_ << active_shift_;
+        static_assert(max_queue_capacity <= pending_mask_);
+        static_assert(max_worker_count <= pending_mask_);
+        static_assert((active_mask_ & stopping_mask_) == 0);
+
+        mutable std::mutex producer_mutex_;
+        mutable std::mutex consumer_mutex_;
         std::vector<std::jthread> workers_;
+        std::mutex workers_mutex_;
         std::mutex shutdown_mutex_;
         std::size_t worker_count_ = 0;
         std::size_t queue_capacity_ = max_queue_capacity;
         std::vector<std::optional<TaskItem>> tasks_;
         std::size_t queue_head_ = 0;
         std::size_t queue_tail_ = 0;
-        std::size_t pending_tasks_ = 0;
-        std::atomic<std::size_t> active_tasks_ = 0;
+        std::atomic<std::size_t> queue_state_ = 0;
+        std::atomic<std::size_t> completion_epoch_ = 0;
+        std::atomic<std::size_t> waiting_for_idle_ = 0;
+        std::atomic<std::size_t> waiting_producers_ = 0;
+        std::atomic<std::size_t> waiting_workers_ = 0;
         std::atomic<std::size_t> failed_dispatches_ = 0;
         std::atomic<std::size_t> cancelled_dispatches_ = 0;
-        bool stopping_ = false;
         inline static thread_local IndustrialWorkerPool* current_worker_pool_ = nullptr;
     };
 

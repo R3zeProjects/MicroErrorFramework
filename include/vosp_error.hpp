@@ -102,7 +102,7 @@ namespace vosp::error
 
     /**
      * @brief Formats an error as `[CATEGORY:code] message`.
-     * @note The representation is stable throughout the 0.2.x release line.
+     * @note The representation is stable throughout the 0.3.x release line.
      */
     [[nodiscard]] inline std::string to_string(const Error& error)
     {

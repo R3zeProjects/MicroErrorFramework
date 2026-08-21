@@ -2,13 +2,13 @@
 
 ## Статус совместимости
 
-Текущая линия — `0.2.x-beta`. Публичным считается API, доступный через
+Текущая линия — `0.3.x-beta`. Публичным считается API, доступный через
 `include/vosp.hpp`; объявления в `detail` не являются контрактом. До 1.0 minor
 release может менять source compatibility с записью в `CHANGELOG.md`. Patch
 release сохраняет source compatibility: он может добавлять opt-in API и
 проверки, но не удаляет объявления и не меняет документированную семантику.
 
-## Стабильные source-контракты 0.2.x
+## Стабильные source-контракты 0.3.x
 
 - `<vosp.hpp>` — единая точка подключения в source tree и installed package.
 - `Error` владеет сообщением и сравнивает category, code и message.
@@ -71,10 +71,14 @@ CTest использует label `api-contract`, а compile-fail cases допо�
 - submit в полной queue блокируется до свободного slot или shutdown;
 - submit после shutdown выбрасывает `std::runtime_error`;
 - `submit()` возвращает future, `dispatch()` учитывает ошибки в counters;
+- `dispatch_bulk()` может брать до 16 callbacks одной группой; взятая группа
+  считается active и больше не отменяется через `clear_queue()`;
 - `clear_queue()` отменяет waiting tasks, но не active tasks;
 - `DRAIN` выполняет принятые задачи и не запрашивает stop;
 - `CANCEL_PENDING` отменяет queue и запрашивает cooperative stop;
 - worker не выполняет self-join; финальный join остаётся у owner.
+- `wait()` завершается после опустошения queue, завершения active work и
+  перевода tracked futures в ready-состояние.
 
 ## Logger
 

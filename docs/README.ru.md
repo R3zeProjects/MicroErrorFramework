@@ -99,6 +99,9 @@ accepted records, а `failed_records()` возвращает число sink fai
 `WorkerPool` предоставляет tracked `submit`, fire-and-forget `dispatch`, batch
 `dispatch_bulk`, cooperative cancellation, queue cleanup и два shutdown mode.
 Queue bounded и применяет backpressure.
+Bulk callbacks выбираются bounded-группами до 16; после выбора они считаются
+active и не удаляются `clear_queue()`. `wait()` также гарантирует ready-состояние
+tracked futures завершённых задач.
 
 ## Расширение
 

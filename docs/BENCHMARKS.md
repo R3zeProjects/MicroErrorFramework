@@ -7,12 +7,40 @@
 - physical cores: 8;
 - logical processors: 16;
 - RAM: 31.95 GiB;
-- compiler: Clang 22.1.8;
+- compiler: Clang 22.1.6;
 - build mode: Release;
 - workload: 100,000 unique inserts;
 - date: 2026-08-18.
 
 ## Result
+
+### 0.3.0 WorkerPool comparison
+
+The 2026-08-21 comparison ran the same production benchmark source against the
+`legacy/0.2.5-beta` branch and the `0.3.0-beta` candidate. Each revision ran five
+independent Release samples with 200,000 operations per scenario. Reported
+values are medians; the aggregate is the geometric mean of candidate/baseline
+throughput ratios for 20 scalar dispatch scenarios.
+
+| Metric | `0.2.5-beta` | `0.3.0-beta` | Change |
+| --- | ---: | ---: | ---: |
+| Scalar dispatch, q64, 4 producers / 4 workers | 1.45492M/s | 2.86402M/s | **+96.9%** |
+| Scalar dispatch, q1024, 4 producers / 4 workers | 1.84961M/s | 2.83218M/s | **+53.1%** |
+| Tracked futures, 4 workers | 641,601/s | 1.74017M/s | **+171.2%** |
+| Native bulk, 4 workers | 2.95890M/s | 9.62330M/s | **+225.2%** |
+| 20-scenario scalar dispatch geometric mean | — | — | **+93.1%** |
+
+The q1024 one-producer/two-worker case measured −7.4%; a 20-microsecond
+backpressure workload measured −10.0%, while its task service time dominates
+executor overhead. CPU-bound 4,096-iteration work remained within −0.4%.
+These regressions are recorded rather than hidden by the aggregate.
+
+The full generated report is
+[`v0.2.5-v0.3.0-worker-comparison-2026-08-21.md`](../benchmark-results/v0.2.5-v0.3.0-worker-comparison-2026-08-21.md).
+`benchmarks/compare_versions.py` reproduces median and geometric-mean
+calculation. The manual Performance regression Action rebuilds both branches,
+runs five alternating samples, uploads raw CSV evidence and requires at least
+70% scalar-dispatch gain.
 
 One warm-up process was excluded, followed by seven independent Release
 processes. The table reports medians:

@@ -1,6 +1,6 @@
-# MicroErrorSystem API guide
+# MicroErrorFramework API guide
 
-`MicroErrorSystem` is a header-only C++23 module for describing, categorizing,
+`MicroErrorFramework` is a header-only C++23 module for describing, categorizing,
 and routing errors to category-specific registers. It uses `std::expected` for
 operations that need to return either a value or an error.
 

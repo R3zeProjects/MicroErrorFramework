@@ -133,6 +133,9 @@ must finish before the final explicit flush and stream destruction.
 - `ShutdownMode::DRAIN` accepts no new work and runs all queued tasks.
 - `ShutdownMode::CANCEL_PENDING` cancels queued tasks and requests cooperative
   cancellation from active cancellable tasks.
+- Scalar queue entries are claimed one at a time. Bulk entries may be claimed
+  in bounded chunks of 16; claimed entries count as active until the chunk has
+  completed and are outside `clear_queue()` cancellation scope.
 - A worker may request pool shutdown, but only an owning external thread joins
   the workers; this prevents self-join deadlocks.
 

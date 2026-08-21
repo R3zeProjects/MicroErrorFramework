@@ -7,7 +7,7 @@
 > выбираются compile-time политиками.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.2.5--beta-orange)
+![API](https://img.shields.io/badge/API-0.3.0--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -48,6 +48,24 @@ beta-версии. Новый код должен использовать ед�
 - компилятор C++23;
 - стандартная библиотека с `std::expected`, `std::jthread` и `std::stop_token`.
 
+## Результаты оптимизации 0.3.0-beta
+
+Сравнение выполнено с точной старой версией из ветки
+`legacy/0.2.5-beta`: пять независимых Release-запусков по 200 000 операций на
+сценарий, итог — медианы одинаковых нагрузок.
+
+| Нагрузка | `0.2.5-beta` | `0.3.0-beta` | Изменение |
+| --- | ---: | ---: | ---: |
+| Dispatch, q64, 4 producers / 4 workers | 1,45492 млн/с | 2,86402 млн/с | **+96,9%** |
+| Dispatch, q1024, 4 producers / 4 workers | 1,84961 млн/с | 2,83218 млн/с | **+53,1%** |
+| Tracked futures, 4 workers | 641 601/с | 1,74017 млн/с | **+171,2%** |
+| Bulk dispatch, 4 workers | 2,95890 млн/с | 9,62330 млн/с | **+225,2%** |
+| Среднее геометрическое 20 dispatch-сценариев | — | — | **+93,1%** |
+
+Async logger уменьшил измеренный объём аллокаций на 19,4%. Полный отчёт:
+[сравнение 0.2.5 и 0.3.0](benchmark-results/v0.2.5-v0.3.0-worker-comparison-2026-08-21.md).
+Manual Performance Action повторяет сравнение на Linux и требует минимум 70%.
+
 ## Подключение
 
 ```cpp
@@ -57,7 +75,7 @@ beta-версии. Новый код должен использовать ед�
 После установки CMake package:
 
 ```cmake
-find_package(vosp 0.1 CONFIG REQUIRED)
+find_package(vosp 0.3.0 CONFIG REQUIRED)
 target_link_libraries(my_target PRIVATE vosp::vosp)
 ```
 
@@ -186,7 +204,8 @@ pool.shutdown(vosp::async::ShutdownMode::DRAIN);
 
 - `submit()` возвращает future;
 - `dispatch()` не создаёт promise/future shared state;
-- `dispatch_bulk()` уменьшает producer-side lock contention;
+- `dispatch_bulk()` обрабатывает задачи bounded-группами до 16 callbacks;
+- взятая worker-ом bulk-группа считается active и не удаляется `clear_queue()`;
 - `clear_queue()` отменяет ещё не запущенные задачи;
 - `CANCEL_PENDING` запрашивает cooperative stop у активных cancellable-задач;
 - worker может сигнализировать shutdown, но финальный join выполняет владелец.
@@ -199,7 +218,7 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Локально полный набор прошёл `10/10` CTest на MSVC и Clang, а выделенный
+Локально полный набор прошёл `11/11` CTest на MSVC и Clang, а выделенный
 API-contract gate — `7/7`. Полный production benchmark также завершён успешно.
 Результаты зависят от железа, toolchain и workload; методика находится в
 benchmark-документации.
@@ -212,6 +231,7 @@ benchmark-документации.
 - [Миграция на единый API](docs/API_MIGRATION.ru.md)
 - [English API guide](docs/README.en.md)
 - [Benchmarks](docs/BENCHMARKS.md)
+- [Аудит MESLS R1.2](docs/MESLS_REFERENCE_AUDIT.ru.md)
 - [Changelog](CHANGELOG.md)
 
 ## Лицензия
