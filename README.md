@@ -1,6 +1,6 @@
-# MicroErrorSystem
+# MicroErrorFramework
 
-**MicroErrorSystem** is a C++23 micro-framework for building a
+**MicroErrorFramework** is a C++23 micro-framework for building a
 system-independent error handling and logging contour.
 
 It provides one public API for classifying, registering, routing, logging,
@@ -17,7 +17,7 @@ particular operating system or domain.
 ## Why this project exists
 
 Application code often mixes domain logic, error storage, logging, thread
-management, and shutdown handling. MicroErrorSystem separates these concerns
+management, and shutdown handling. MicroErrorFramework separates these concerns
 behind small interfaces and compile-time policies.
 
 The framework is intentionally small and header-only. It is suitable for
@@ -155,11 +155,11 @@ ThreadSanitizer, Valgrind and nightly soak configurations target Linux.
 From the repository root:
 
 ```bash
-cmake -S MicroErrorSystem -B MicroErrorSystem/build \
+cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=ON
-cmake --build MicroErrorSystem/build --parallel
-ctest --test-dir MicroErrorSystem/build --output-on-failure
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
 
 On Windows, the executable suffix is `.exe`.
@@ -167,9 +167,9 @@ On Windows, the executable suffix is `.exe`.
 Install the header-only package and consume it through `find_package`:
 
 ```bash
-cmake --install MicroErrorSystem/build --prefix MicroErrorSystem/install
+cmake --install build --prefix install
 cmake -S consumer -B consumer/build \
-  -DCMAKE_PREFIX_PATH=/path/to/MicroErrorSystem/install
+  -DCMAKE_PREFIX_PATH=/path/to/install
 ```
 
 ```cmake
@@ -375,46 +375,46 @@ async_logger.flush();
 ### Benchmarks
 
 ```bash
-cmake -S MicroErrorSystem -B MicroErrorSystem/build-bench \
+cmake -S . -B build-bench \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_BENCHMARKS=ON
-cmake --build MicroErrorSystem/build-bench --parallel
-MicroErrorSystem/build-bench/MicroErrorSystemBenchmark
+cmake --build build-bench --parallel
+build-bench/MicroErrorSystemBenchmark
 ```
 
 ### AddressSanitizer and UndefinedBehaviorSanitizer
 
 ```bash
-cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-asan \
+cmake -G Ninja -S . -B build-asan \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DBUILD_TESTING=ON \
   -DENABLE_SANITIZERS=ON
-cmake --build MicroErrorSystem/build-asan --parallel
-ctest --test-dir MicroErrorSystem/build-asan --output-on-failure
+cmake --build build-asan --parallel
+ctest --test-dir build-asan --output-on-failure
 ```
 
 ### ThreadSanitizer
 
 ```bash
-cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-tsan \
+cmake -G Ninja -S . -B build-tsan \
   -DCMAKE_BUILD_TYPE=Debug \
   -DBUILD_TESTING=ON \
   -DENABLE_THREAD_SANITIZER=ON
-cmake --build MicroErrorSystem/build-tsan --parallel
-ctest --test-dir MicroErrorSystem/build-tsan --output-on-failure
+cmake --build build-tsan --parallel
+ctest --test-dir build-tsan --output-on-failure
 ```
 
 ### Coverage
 
 ```bash
-cmake -S MicroErrorSystem -B MicroErrorSystem/build-coverage \
+cmake -S . -B build-coverage \
   -DCMAKE_BUILD_TYPE=Debug \
   -DBUILD_TESTING=ON \
   -DENABLE_COVERAGE=ON
-cmake --build MicroErrorSystem/build-coverage --parallel
-ctest --test-dir MicroErrorSystem/build-coverage --output-on-failure
-gcovr --root MicroErrorSystem \
-  --filter 'MicroErrorSystem/include/.*' \
+cmake --build build-coverage --parallel
+ctest --test-dir build-coverage --output-on-failure
+gcovr --root . \
+  --filter 'include/.*' \
   --txt --xml-pretty --output coverage.xml
 ```
 
@@ -424,24 +424,24 @@ also checked with stress tests, ThreadSanitizer, and targeted unit tests.
 ### LibFuzzer
 
 ```bash
-cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-fuzz \
+cmake -G Ninja -S . -B build-fuzz \
   -DCMAKE_BUILD_TYPE=Debug \
   -DBUILD_FUZZERS=ON
-cmake --build MicroErrorSystem/build-fuzz --parallel
-MicroErrorSystem/build-fuzz/MicroErrorSystemFuzzer -runs=10000
+cmake --build build-fuzz --parallel
+build-fuzz/MicroErrorSystemFuzzer -runs=10000
 ```
 
 For Windows or toolchains without a compatible LibFuzzer runtime, the
 repository also provides a sanitizer-backed deterministic smoke target:
 
 ```bash
-cmake -G Ninja -S MicroErrorSystem -B MicroErrorSystem/build-fuzz-smoke \
+cmake -G Ninja -S . -B build-fuzz-smoke \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_CXX_COMPILER=clang++ \
   -DBUILD_FUZZ_SMOKE=ON \
   -DBUILD_TESTING=OFF
-cmake --build MicroErrorSystem/build-fuzz-smoke --parallel
-MicroErrorSystem/build-fuzz-smoke/MicroErrorSystemFuzzSmoke
+cmake --build build-fuzz-smoke --parallel
+build-fuzz-smoke/MicroErrorSystemFuzzSmoke
 ```
 
 The smoke target executes 100,000 generated inputs through the same fuzz
@@ -489,7 +489,7 @@ in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 ### External HTTP integration workload
 
 The local integration combines `fmt 11.2.0`, `cpp-httplib v0.18.0`, and
-MicroErrorSystem's multi-threaded `System`. Four workers issue requests against a
+MicroErrorFramework's multi-threaded `System`. Four workers issue requests against a
 local HTTP server and route failed responses into a network error register.
 
 ```text
@@ -512,14 +512,14 @@ by the optional test and benchmark targets; it is not part of the runtime API.
 Configure and run it with:
 
 ```bash
-cmake -S MicroErrorSystem -B MicroErrorSystem/build-external \
+cmake -S . -B build-external \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=ON \
   -DBUILD_BENCHMARKS=ON \
   -DBUILD_EXTERNAL_STRESS_TESTS=ON
-cmake --build MicroErrorSystem/build-external --parallel
-ctest --test-dir MicroErrorSystem/build-external --output-on-failure
-MicroErrorSystem/build-external/MicroErrorSystemExternalBenchmark
+cmake --build build-external --parallel
+ctest --test-dir build-external --output-on-failure
+build-external/MicroErrorSystemExternalBenchmark
 ```
 
 Additional external workloads can be placed under `third_party/workloads` and
@@ -562,7 +562,7 @@ The project currently includes:
 ## Repository layout
 
 ```text
-MicroErrorSystem/
+MicroErrorFramework/
 ├── include/
 │   ├── vosp.hpp                 # single public entry point
 │   ├── vosp_error.hpp           # Error, Result, registers and systems
