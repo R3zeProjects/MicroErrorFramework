@@ -5,6 +5,13 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.2.2-beta] - 2026-08-21
+
+### Added
+
+- Cross-platform compile-fail contracts for invalid register, executor, sink,
+  and logger dispatch policies.
+
 ## [0.2.1-beta] - 2026-08-21
 
 ### Added
