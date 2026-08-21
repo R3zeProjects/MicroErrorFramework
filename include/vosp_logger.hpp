@@ -321,7 +321,7 @@ namespace vosp::logger
         template<SinkType... Sinks>
         explicit PolicyLogger(Sinks&... sinks)
         {
-            (static_cast<void>(attach(sinks)), ...);
+            (static_cast<void>(attach_slot(SinkSlot{&sinks, {}})), ...);
         }
 
         /**
@@ -331,7 +331,11 @@ namespace vosp::logger
         template<SinkType Sink>
         explicit PolicyLogger(std::shared_ptr<Sink> sink)
         {
-            static_cast<void>(attach(std::move(sink)));
+            if (sink)
+            {
+                auto* const raw_sink = sink.get();
+                static_cast<void>(attach_slot(SinkSlot{raw_sink, std::move(sink)}));
+            }
         }
 
         /**
