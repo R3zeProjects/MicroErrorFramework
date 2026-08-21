@@ -14,6 +14,28 @@
 
 ## Result
 
+### 0.3.1 WorkerPool patch comparison
+
+The 2026-08-21 patch comparison rebuilt the immutable `v0.3.0-beta` tag and
+the `0.3.1-beta` candidate with Clang 22.1.6 in Release mode. Seven independent
+full production runs alternated revision order and used 200,000 operations per
+scenario.
+
+| Metric | `0.3.0-beta` | `0.3.1-beta` | Change |
+| --- | ---: | ---: | ---: |
+| Scalar dispatch, q64, 4 producers / 4 workers | 2.51196M/s | 2.62992M/s | **+4.7%** |
+| Scalar dispatch, q1024, 4 producers / 4 workers | 2.47157M/s | 3.15029M/s | **+27.5%** |
+| Tracked futures, 4 workers | 2.18849M/s | 2.41081M/s | **+10.2%** |
+| Native bulk, 4 workers | 11.5944M/s | 12.7662M/s | **+10.1%** |
+| 20-scenario scalar dispatch geometric mean | — | — | **+13.0%** |
+
+The q1024 four-producer/one-worker case measured -13.9%; CPU-bound and
+backpressure scenarios remained within -3.0%. The patch removes repeated
+construction of worker-local claim storage without changing public API,
+cancellation granularity, or shutdown behavior. The complete selected results
+are stored in
+[`v0.3.0-v0.3.1-worker-comparison-2026-08-21.md`](../benchmark-results/v0.3.0-v0.3.1-worker-comparison-2026-08-21.md).
+
 ### 0.3.0 WorkerPool comparison
 
 The 2026-08-21 comparison ran the same production benchmark source against the

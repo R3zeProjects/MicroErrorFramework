@@ -428,9 +428,11 @@ namespace vosp::async
         void run(std::stop_token stop_token)
         {
             current_worker_pool_ = this;
+            // Reuse worker-local claim storage. Reconstructing sixteen optional
+            // TaskItems for every scalar dispatch adds measurable hot-path work.
+            std::array<std::optional<TaskItem>, bulk_claim_size_> batch;
             while (true)
             {
-                std::array<std::optional<TaskItem>, bulk_claim_size_> batch;
                 std::size_t claimed = 0;
                 auto state = queue_state_.load(std::memory_order_acquire);
                 while (pending_from_state(state) == 0 && !is_stopping_state(state))
@@ -481,6 +483,8 @@ namespace vosp::async
                 for (std::size_t index = 0; index < claimed; ++index)
                     execute(*batch[index], stop_token, false);
                 finish_tasks(claimed);
+                for (std::size_t index = 0; index < claimed; ++index)
+                    batch[index].reset();
             }
         }
 

@@ -5,6 +5,22 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.3.1-beta] - 2026-08-21
+
+### Performance
+
+- Reused worker-local bulk claim storage instead of reconstructing sixteen
+  optional task slots for every scalar dispatch.
+- Improved the 20-scenario WorkerPool dispatch geometric mean by 13.0% over
+  `v0.3.0-beta` in the documented seven-run local Release comparison.
+
+### CI
+
+- Changed the performance workflow to compare every candidate with the immutable
+  `v0.3.0-beta` tag on pushes, pull requests, and manual runs.
+- Added alternating run order, subsystem geometric means, message-size reporting,
+  a 5% dispatch improvement gate, and bounded worker/subsystem regression gates.
+
 ## [0.3.0-beta] - 2026-08-21
 
 ### Changed

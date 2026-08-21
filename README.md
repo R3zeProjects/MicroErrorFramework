@@ -10,7 +10,7 @@ particular operating system or domain.
 > **Main idea:** an error-control and logging contour independent of the host system.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.3.0--beta-orange)
+![API](https://img.shields.io/badge/API-0.3.1--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -55,6 +55,7 @@ All values below are real local Release measurements, not theoretical claims.
 | Fire-and-forget tasks | `dispatch()`, q64, 4 producers / 4 workers | **2.86402M tasks/s** |
 | Grouped task submission | `dispatch_bulk()`, 4 workers | **9.62330M tasks/s** |
 | Worker dispatch gain | 20-scenario geometric mean vs `v0.2.5-beta` | **+93.1%** |
+| Worker dispatch patch gain | 20-scenario geometric mean vs `v0.3.0-beta` | **+13.0%** |
 | Bulk dispatch gain | Same machine and harness vs `v0.2.5-beta` | **+225.2%** |
 | Async queue allocation bytes | 200,000 records vs `v0.2.5-beta` | **−19.4%** |
 | Logger dispatch | Prepared records, 1 thread | **20.6567M records/s** |
@@ -103,8 +104,12 @@ The `0.3.0-beta` comparison uses five independent Release runs per revision,
 200,000 operations per worker scenario, and the exact `v0.2.5-beta` source from
 the `legacy/0.2.5-beta` branch. The raw medians and scenario deltas are recorded
 in [the version comparison](benchmark-results/v0.2.5-v0.3.0-worker-comparison-2026-08-21.md).
-The manual Performance regression Action repeats the same comparison on Linux
-and enforces a 70% geometric-mean dispatch target.
+The `0.3.1-beta` comparison uses seven alternating Release runs against the
+immutable `v0.3.0-beta` tag. It measured a 13.0% dispatch geometric-mean gain;
+details and recorded regressions are in
+[the patch comparison](benchmark-results/v0.3.0-v0.3.1-worker-comparison-2026-08-21.md).
+The Performance regression Action runs automatically for relevant main-branch
+pushes and pull requests, enforcing improvement and bounded-regression gates.
 
 ## Architecture
 
@@ -592,7 +597,7 @@ MicroErrorFramework/
 
 ## Versioning
 
-The current release is **`0.3.0-beta`**. The numeric API version follows this
+The current release is **`0.3.1-beta`**. The numeric API version follows this
 project policy:
 
 - `x.0.0` — a complete system redesign or stable generation release;
@@ -604,7 +609,7 @@ first stable generation.
 
 ## Current limitations
 
-- The API is version `0.3.0-beta` and may evolve before `1.0.0`.
+- The API is version `0.3.1-beta` and may evolve before `1.0.0`.
 - Error systems reference externally owned registers; logger sinks are either
   non-owning references or logger-owned `std::shared_ptr` instances.
 - A running worker task cannot be forcefully interrupted safely.
