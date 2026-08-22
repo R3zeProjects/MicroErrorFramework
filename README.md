@@ -10,7 +10,7 @@ particular operating system or domain.
 > **Main idea:** an error-control and logging contour independent of the host system.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.4.0--beta-orange)
+![API](https://img.shields.io/badge/API-0.4.1--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -199,7 +199,7 @@ cmake -S consumer -B consumer/build \
 ```
 
 ```cmake
-find_package(vosp 0.4.0 CONFIG REQUIRED)
+find_package(vosp 0.4.1 CONFIG REQUIRED)
 target_link_libraries(my_target PRIVATE vosp::vosp)
 ```
 
@@ -254,7 +254,7 @@ log the converted failure:
 
 ```cpp
 vosp::logger::Sink sink{std::cerr};
-vosp::logger::Logger logger{sink};
+vsp::Logger logger{sink};
 
 Result<int> rows = logger.capture(
     Error{Category::DATABASE, 2001, "database query"},
@@ -312,7 +312,7 @@ record immediately and is the clearest option for diagnostics:
 #include <iostream>
 
 vosp::logger::Sink output{std::cout};
-vosp::logger::Logger logger{output};
+vsp::Logger logger{output};
 
 const bool logged = logger.error(vosp::error::Error{
     vosp::error::Category::NETWORK,
@@ -358,7 +358,7 @@ retain a sink safely, attach a `std::shared_ptr` instead:
 #include <memory>
 
 auto sink = std::make_shared<MySink>();
-vosp::logger::Logger logger{sink};
+vsp::Logger logger{sink};
 sink.reset(); // Logger keeps the sink alive.
 ```
 
@@ -629,7 +629,7 @@ MicroErrorFramework/
 
 ## Versioning
 
-The current release is **`0.4.0-beta`**. The numeric API version follows this
+The current release is **`0.4.1-beta`**. The numeric API version follows this
 project policy:
 
 - `x.0.0` — a complete system redesign or stable generation release;
@@ -641,7 +641,7 @@ first stable generation.
 
 ## Current limitations
 
-- The API is version `0.4.0-beta` and may evolve before `1.0.0`.
+- The API is version `0.4.1-beta` and may evolve before `1.0.0`.
 - Error systems reference externally owned registers; logger sinks are either
   non-owning references or logger-owned `std::shared_ptr` instances.
 - A running worker task cannot be forcefully interrupted safely.
@@ -660,7 +660,6 @@ first stable generation.
 - [Unified API migration](docs/API_MIGRATION.md)
 - [Benchmark report](docs/BENCHMARKS.md)
 - [External workload validation](docs/EXTERNAL_WORKLOADS.md)
-- [MESLS R1.2 reference audit](docs/MESLS_REFERENCE_AUDIT.md)
 - [API guide](docs/README.en.md)
 - [Changelog](CHANGELOG.md)
 

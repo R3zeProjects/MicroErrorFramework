@@ -5,6 +5,13 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.4.1-beta] - 2026-08-22
+
+### Added
+
+- Added the compact `vsp` namespace facade and `vsp::Logger` convenience name
+  while preserving every canonical `vosp` API name.
+
 ## [0.4.0-beta] - 2026-08-21
 
 ### Added
@@ -21,11 +28,6 @@ the version policy described in `docs/API_CONTRACTS.md`.
   on average and enforcing code uniqueness within a register.
 - Performance Actions now compare feature work against `v0.3.1-beta` and gate
   regressions without requiring every feature release to improve WorkerPool.
-
-### Scope
-
-- MESLS `.mlog`, filesystem persistence, and generic value serialization remain
-  outside MicroErrorFramework and are reserved for a separate ecosystem library.
 
 ## [0.3.1-beta] - 2026-08-21
 

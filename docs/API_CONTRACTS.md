@@ -9,6 +9,10 @@ change is recorded in `CHANGELOG.md`. Patch releases remain source compatible:
 they may add opt-in APIs and validation, but do not remove declarations or
 change the documented semantics of existing calls.
 
+The umbrella header exposes `vsp` as a compact namespace facade for `vosp` and
+provides `vsp::Logger` as the short name of `vosp::logger::Logger`. Canonical
+`vosp` names remain supported and denote the same types.
+
 The project does not promise a stable binary ABI before 1.0. It is header-only,
 so all consumers must rebuild after an upgrade. A 1.0 release requires a
 documented API freeze, green supported-compiler CI, Linux concurrency gates and
