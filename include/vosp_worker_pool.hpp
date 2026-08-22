@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vosp_error.hpp"
+#include <vosp/error.hpp>
 
 #include <algorithm>
 #include <array>

@@ -1,4 +1,4 @@
-#include <vosp.hpp>
+#include <vosp/logger.hpp>
 
 #include <algorithm>
 #include <atomic>

@@ -10,7 +10,7 @@ particular operating system or domain.
 > **Main idea:** an error-control and logging contour independent of the host system.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.4.1--beta-orange)
+![API](https://img.shields.io/badge/API-0.4.2--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -202,14 +202,24 @@ cmake -S consumer -B consumer/build \
 ```
 
 ```cmake
-find_package(vosp 0.4.1 CONFIG REQUIRED)
+find_package(vosp 0.4.2 CONFIG REQUIRED)
 target_link_libraries(my_target PRIVATE vosp::vosp)
 ```
+
+Prefer modular headers when only one subsystem is needed:
+
+```cpp
+#include <vosp/error.hpp>       // Error, Result, Register, System
+#include <vosp/logger.hpp>      // Logger and Sink policies
+#include <vosp/worker_pool.hpp> // bounded asynchronous execution
+```
+
+`#include <vosp.hpp>` remains the supported umbrella for the complete API.
 
 ## Minimal example
 
 ```cpp
-#include <vosp.hpp>
+#include <vosp/error.hpp>
 #include <iostream>
 #include <stdexcept>
 
@@ -632,7 +642,7 @@ MicroErrorFramework/
 
 ## Versioning
 
-The current release is **`0.4.1-beta`**. The numeric API version follows this
+The current release is **`0.4.2-beta`**. The numeric API version follows this
 project policy:
 
 - `x.0.0` — a complete system redesign or stable generation release;
@@ -644,7 +654,7 @@ first stable generation.
 
 ## Current limitations
 
-- The API is version `0.4.1-beta` and may evolve before `1.0.0`.
+- The API is version `0.4.2-beta` and may evolve before `1.0.0`.
 - Error systems reference externally owned registers; logger sinks are either
   non-owning references or logger-owned `std::shared_ptr` instances.
 - A running worker task cannot be forcefully interrupted safely.

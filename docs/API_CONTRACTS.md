@@ -20,8 +20,9 @@ release-candidate soak evidence.
 
 ## Stable 0.4.x source contracts
 
-- `<vosp.hpp>` is the umbrella source entry point in both the source tree and
-  the installed package.
+- `<vosp/error.hpp>`, `<vosp/logger.hpp>`, and `<vosp/worker_pool.hpp>` are the
+  canonical modular entry points in both the source tree and installed package.
+  `<vosp.hpp>` remains the supported umbrella for the complete API.
 - `Error` owns its message and compares category, numeric code and message.
   `category_name()` returns stable uppercase category names and
   `to_string(error)` returns `[CATEGORY:code] message`.

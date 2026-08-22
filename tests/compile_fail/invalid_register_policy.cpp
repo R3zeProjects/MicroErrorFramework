@@ -1,4 +1,4 @@
-#include <vosp.hpp>
+#include <vosp/error.hpp>
 
 using InvalidRegister = vosp::error::Register<
     vosp::error::Category::NETWORK,

@@ -1,4 +1,5 @@
-#include <vosp.hpp>
+#include <vosp/error.hpp>
+#include <vosp/worker_pool.hpp>
 
 #include <algorithm>
 #include <atomic>

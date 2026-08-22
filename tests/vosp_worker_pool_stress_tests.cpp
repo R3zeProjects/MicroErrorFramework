@@ -1,4 +1,4 @@
-#include <vosp.hpp>
+#include <vosp/worker_pool.hpp>
 
 #include <atomic>
 #include <chrono>

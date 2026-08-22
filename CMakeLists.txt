@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MicroErrorSystem
-    VERSION 0.4.1
+    VERSION 0.4.2
     LANGUAGES CXX
 )
 

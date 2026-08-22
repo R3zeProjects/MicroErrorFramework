@@ -5,6 +5,17 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.4.2-beta] - 2026-08-22
+
+### Added
+
+- Added canonical modular includes: `<vosp/error.hpp>`, `<vosp/logger.hpp>`,
+  and `<vosp/worker_pool.hpp>`.
+
+### Compatibility
+
+- Preserved the `<vosp.hpp>` umbrella and legacy root header paths.
+
 ## [0.4.1-beta] - 2026-08-22
 
 ### Added
