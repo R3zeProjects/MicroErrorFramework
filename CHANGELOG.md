@@ -5,6 +5,18 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.6.0-beta] - 2026-08-22
+
+### Changed
+
+- Made MEF the owner of its concrete error, result, log-entry, and sink types;
+  MCF now supplies compile-time structural contracts only.
+- Added compile-time checks proving the MEF types satisfy the MCF contracts.
+- Concrete sinks connect directly to MEF Logger without an adapter or record
+  conversion layer.
+- Moved declarations into the canonical `<vosp/...>` headers and removed the
+  duplicate root-level forwarding paths.
+
 ## [0.5.0-beta] - 2026-08-22
 
 ### Changed

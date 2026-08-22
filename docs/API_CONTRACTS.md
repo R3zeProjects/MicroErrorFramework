@@ -2,7 +2,7 @@
 
 ## Status and compatibility
 
-The current release line is `0.5.x-beta`. The public API is every declaration
+The current release line is `0.6.x-beta`. The public API is every declaration
 reachable from `include/vosp.hpp`; implementation details under `detail` are not
 public. Before 1.0, minor releases may change source compatibility when the
 change is recorded in `CHANGELOG.md`. Patch releases remain source compatible:
@@ -18,14 +18,17 @@ so all consumers must rebuild after an upgrade. A 1.0 release requires a
 documented API freeze, green supported-compiler CI, Linux concurrency gates and
 release-candidate soak evidence.
 
-## Stable 0.5.x source contracts
+## Stable 0.6.x source contracts
 
 - `<vosp/error.hpp>`, `<vosp/logger.hpp>`, and `<vosp/worker_pool.hpp>` are the
   canonical modular entry points in both the source tree and installed package.
   `<vosp.hpp>` remains the supported umbrella for the complete API.
-- `Error`, `Result<T>`, and `OperationResult` originate in the required
-  `vosp::contracts` package. MEF preserves their established `vosp::error`
-  names and adds no wrapper object or conversion cost.
+- MEF implements `Error`, `Result<T>`, and `OperationResult` in
+  `vosp::error`. The required `vosp::contracts` package supplies only C++23
+  concepts that validate this implementation; it owns no runtime values.
+- MEF implements `Level`, `LogEntry`, `ILogSink`, and `SinkType` in
+  `vosp::logger`. Their public protocols are checked against MCF concepts, and
+  MEF loggers call concrete sinks directly.
 - `Error` owns its message and compares category, numeric code and message.
   `category_name()` returns stable uppercase category names and
   `to_string(error)` returns `[CATEGORY:code] message`.

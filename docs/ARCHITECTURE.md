@@ -14,9 +14,14 @@ control and logging boundary around an application. It provides:
 The framework does not define application-specific recovery, persistent
 storage, log rotation, distributed transport, or process-wide global state.
 
-Shared error values are owned by MicroContractsFramework. MEF depends on that
-header-only contract package and owns only error registration, routing,
-logging, and execution behavior. MCF never depends back on MEF.
+MEF owns its concrete error and logging types together with registration,
+routing, formatting, dispatch, and execution behavior. It depends on
+MicroContractsFramework only for structural C++23 concepts that verify those
+public protocols. MCF owns no runtime implementation and never depends back on
+MEF. External implementations may satisfy the same concepts independently.
+
+External sinks consume MEF `LogEntry` values directly through `ILogSink`.
+There is no ecosystem adapter layer or intermediate conversion.
 
 ## Design goals
 
@@ -30,8 +35,8 @@ logging, and execution behavior. MCF never depends back on MEF.
 
 ### Error model
 
-`vosp::error::Error`, supplied by MicroContractsFramework, owns a category,
-numeric code, and message. Equality
+`vosp::error::Error`, implemented by MEF and checked against the MCF `Error`
+concept, owns a category, numeric code, and message. Equality
 compares all three fields. `Result<T>` is an alias for
 `std::expected<T, Error>`, and `OperationResult` represents an operation that
 returns no value on success.

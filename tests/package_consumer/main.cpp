@@ -5,7 +5,7 @@
 
 int main() {
   static_assert(vsp::version::major == 0);
-  static_assert(vsp::version::minor == 5);
+  static_assert(vsp::version::minor == 6);
   static_assert(vsp::version::patch == 0);
   static_assert(std::same_as<vsp::Logger<>, vosp::logger::Logger<>>);
 

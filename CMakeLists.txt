@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MicroErrorSystem
-    VERSION 0.5.0
+    VERSION 0.6.0
     LANGUAGES CXX
 )
 
@@ -33,18 +33,18 @@ if(NOT TARGET vosp::contracts)
         set(BUILD_TESTING "${_mef_saved_build_testing}")
         unset(_mef_saved_build_testing)
     else()
-        find_package(vosp_contracts 0.1 QUIET CONFIG)
+        find_package(vosp_contracts 0.5 QUIET CONFIG)
         if(NOT vosp_contracts_FOUND)
             if(NOT MEF_FETCH_CONTRACTS)
                 message(FATAL_ERROR
-                    "MicroContractsFramework 0.1 is required. Install it, set "
+                    "MicroContractsFramework 0.5 is required. Install it, set "
                     "MEF_CONTRACTS_SOURCE_DIR, or enable MEF_FETCH_CONTRACTS.")
             endif()
             include(FetchContent)
             FetchContent_Declare(
                 vosp_contracts
                 GIT_REPOSITORY https://github.com/R3zeProjects/MicroContractsFramework.git
-                GIT_TAG e0856a18d76d8e37a7a327572c708715b599315b
+                GIT_TAG b9f78d3f529097ac1dae963b06274a6110b39c1a
                 GIT_SHALLOW FALSE
             )
             set(_mef_saved_build_testing "${BUILD_TESTING}")

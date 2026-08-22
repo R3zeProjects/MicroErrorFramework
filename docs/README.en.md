@@ -30,9 +30,10 @@ The module is header-only:
 using namespace vosp::error;
 ```
 
-`vosp.hpp` is the single public entry point. The focused headers
-`vosp_error.hpp`, `vosp_logger.hpp`, and `vosp_worker_pool.hpp` can be included
-separately to reduce compile time.
+`vosp.hpp` is the complete public umbrella. The canonical focused headers
+`<vosp/error.hpp>`, `<vosp/logger.hpp>`, and `<vosp/worker_pool.hpp>` can be
+included separately to reduce compile time. Legacy forwarding headers were
+removed so every focused path contains its own declarations.
 
 ## Create an error
 

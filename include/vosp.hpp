@@ -15,5 +15,8 @@ namespace vosp {
 using logger::Logger;
 } // namespace vosp
 
+#ifndef VOSP_NAMESPACE_FACADE_DEFINED
+#define VOSP_NAMESPACE_FACADE_DEFINED
 /** @brief Compact namespace facade for the complete VOSP ecosystem. */
 namespace vsp = vosp;
+#endif
