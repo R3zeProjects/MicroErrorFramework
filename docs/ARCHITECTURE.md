@@ -14,6 +14,10 @@ control and logging boundary around an application. It provides:
 The framework does not define application-specific recovery, persistent
 storage, log rotation, distributed transport, or process-wide global state.
 
+Shared error values are owned by MicroContractsFramework. MEF depends on that
+header-only contract package and owns only error registration, routing,
+logging, and execution behavior. MCF never depends back on MEF.
+
 ## Design goals
 
 - Keep the default API small and available through `<vosp.hpp>`.
@@ -26,7 +30,8 @@ storage, log rotation, distributed transport, or process-wide global state.
 
 ### Error model
 
-`vosp::error::Error` owns a category, numeric code, and message. Equality
+`vosp::error::Error`, supplied by MicroContractsFramework, owns a category,
+numeric code, and message. Equality
 compares all three fields. `Result<T>` is an alias for
 `std::expected<T, Error>`, and `OperationResult` represents an operation that
 returns no value on success.

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MicroErrorSystem
-    VERSION 0.4.2
+    VERSION 0.5.0
     LANGUAGES CXX
 )
 
@@ -10,6 +10,51 @@ set(MICRO_ERROR_SYSTEM_PRERELEASE "beta")
 include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+
+set(MEF_CONTRACTS_SOURCE_DIR "" CACHE PATH
+    "Optional MicroContractsFramework source tree")
+option(MEF_FETCH_CONTRACTS
+    "Fetch the pinned MicroContractsFramework when it is not installed"
+    ON)
+
+if(NOT TARGET vosp::contracts)
+    if(MEF_CONTRACTS_SOURCE_DIR)
+        if(NOT EXISTS "${MEF_CONTRACTS_SOURCE_DIR}/CMakeLists.txt")
+            message(FATAL_ERROR
+                "MEF_CONTRACTS_SOURCE_DIR does not contain MicroContractsFramework")
+        endif()
+        set(_mef_saved_build_testing "${BUILD_TESTING}")
+        set(BUILD_TESTING OFF)
+        add_subdirectory(
+            "${MEF_CONTRACTS_SOURCE_DIR}"
+            "${CMAKE_CURRENT_BINARY_DIR}/contracts"
+            EXCLUDE_FROM_ALL
+        )
+        set(BUILD_TESTING "${_mef_saved_build_testing}")
+        unset(_mef_saved_build_testing)
+    else()
+        find_package(vosp_contracts 0.1 QUIET CONFIG)
+        if(NOT vosp_contracts_FOUND)
+            if(NOT MEF_FETCH_CONTRACTS)
+                message(FATAL_ERROR
+                    "MicroContractsFramework 0.1 is required. Install it, set "
+                    "MEF_CONTRACTS_SOURCE_DIR, or enable MEF_FETCH_CONTRACTS.")
+            endif()
+            include(FetchContent)
+            FetchContent_Declare(
+                vosp_contracts
+                GIT_REPOSITORY https://github.com/R3zeProjects/MicroContractsFramework.git
+                GIT_TAG e0856a18d76d8e37a7a327572c708715b599315b
+                GIT_SHALLOW FALSE
+            )
+            set(_mef_saved_build_testing "${BUILD_TESTING}")
+            set(BUILD_TESTING OFF)
+            FetchContent_MakeAvailable(vosp_contracts)
+            set(BUILD_TESTING "${_mef_saved_build_testing}")
+            unset(_mef_saved_build_testing)
+        endif()
+    endif()
+endif()
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
@@ -77,7 +122,8 @@ target_include_directories(MicroErrorSystemHeaders
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(MicroErrorSystemHeaders INTERFACE cxx_std_23)
-target_link_libraries(MicroErrorSystemHeaders INTERFACE Threads::Threads)
+target_link_libraries(MicroErrorSystemHeaders
+    INTERFACE vosp::contracts Threads::Threads)
 if(ENABLE_HELGRIND_ANNOTATIONS)
     target_compile_definitions(MicroErrorSystemHeaders
         INTERFACE VOSP_ENABLE_HELGRIND_ANNOTATIONS=1)

@@ -10,7 +10,7 @@ particular operating system or domain.
 > **Main idea:** an error-control and logging contour independent of the host system.
 
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)
-![API](https://img.shields.io/badge/API-0.4.2--beta-orange)
+![API](https://img.shields.io/badge/API-0.5.0--beta-orange)
 ![CMake](https://img.shields.io/badge/CMake-3.25%2B-064F8C)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -23,6 +23,12 @@ behind small interfaces and compile-time policies.
 The framework is intentionally small and header-only. It is suitable for
 experiments, infrastructure components, services, and as a reusable error
 control layer in larger C++ systems.
+
+MEF uses
+[MicroContractsFramework](https://github.com/R3zeProjects/MicroContractsFramework)
+for the shared `Error` and `Result<T>` value contracts. The dependency is
+header-only and adds no runtime component. CMake resolves an installed
+`vosp_contracts` package or fetches the pinned compatible revision.
 
 ## Features
 
@@ -202,7 +208,7 @@ cmake -S consumer -B consumer/build \
 ```
 
 ```cmake
-find_package(vosp 0.4.2 CONFIG REQUIRED)
+find_package(vosp 0.5 CONFIG REQUIRED)
 target_link_libraries(my_target PRIVATE vosp::vosp)
 ```
 
@@ -642,7 +648,7 @@ MicroErrorFramework/
 
 ## Versioning
 
-The current release is **`0.4.2-beta`**. The numeric API version follows this
+The current release is **`0.5.0-beta`**. The numeric API version follows this
 project policy:
 
 - `x.0.0` — a complete system redesign or stable generation release;
@@ -654,7 +660,7 @@ first stable generation.
 
 ## Current limitations
 
-- The API is version `0.4.2-beta` and may evolve before `1.0.0`.
+- The API is version `0.5.0-beta` and may evolve before `1.0.0`.
 - Error systems reference externally owned registers; logger sinks are either
   non-owning references or logger-owned `std::shared_ptr` instances.
 - A running worker task cannot be forcefully interrupted safely.

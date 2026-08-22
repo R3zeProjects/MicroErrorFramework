@@ -5,6 +5,15 @@ the version policy described in `docs/API_CONTRACTS.md`.
 
 ## [Unreleased]
 
+## [0.5.0-beta] - 2026-08-22
+
+### Changed
+
+- Moved the shared `Error`, `Result<T>`, `OperationResult`, hashing,
+  formatting, and exception-translation contracts to MicroContractsFramework.
+- Added a pinned header-only `vosp::contracts` dependency while preserving the
+  existing `<vosp/error.hpp>` and `vosp::error` source API.
+
 ## [0.4.2-beta] - 2026-08-22
 
 ### Added

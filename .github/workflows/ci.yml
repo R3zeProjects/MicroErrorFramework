@@ -135,11 +135,15 @@ jobs:
           -DBUILD_TESTING=OFF
           -DBUILD_BENCHMARKS=OFF
       - name: Install package
-        run: cmake --install build --prefix "$PWD/install"
+        run: |
+          cmake -S build/_deps/vosp_contracts-src -B contracts-build \
+            -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --install contracts-build --prefix "$PWD/install"
+          cmake --install build --prefix "$PWD/install"
       - name: Verify version and package boundary
         shell: bash
         run: |
-          grep -F 'set(PACKAGE_VERSION "0.4.2")' \
+          grep -F 'set(PACKAGE_VERSION "0.5.0")' \
             install/lib/cmake/vosp/vospConfigVersion.cmake
           if find install -type f \
             \( -iname '*benchmark*' -o -iname '*test*' \

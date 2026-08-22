@@ -42,6 +42,8 @@
 build/
 Build/
 build-*/
+install-*/
+package-*/
 cmake-build-*/
 cmake-install-*/
 
