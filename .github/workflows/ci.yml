@@ -12,6 +12,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  external-comparison-contracts:
+    name: Linux pinned logger comparisons
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure pinned external benchmarks
+        run: >-
+          cmake -S . -B build-external -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=OFF
+          -DBUILD_EXTERNAL_COMPARISON_BENCHMARKS=ON
+      - name: Build comparison contract
+        run: >-
+          cmake --build build-external --parallel 2
+          --target MicroErrorFrameworkExternalLoggerBenchmark
+      - name: Validate equal delivered output
+        run: |
+          for scenario in mef-sync spdlog-sync mef-async quill-async; do
+            ./build-external/MicroErrorFrameworkExternalLoggerBenchmark "$scenario" 10000 2
+          done
+
   linux-compilers:
     name: Linux ${{ matrix.name }}
     runs-on: ubuntu-latest

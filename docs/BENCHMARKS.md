@@ -228,6 +228,41 @@ The four-worker results have higher scheduler variance than the single-thread
 results. The benchmark validates record counts and equal formatted byte counts
 before reporting success. Results remain machine- and workload-dependent.
 
+## External logger comparison
+
+The opt-in external suite compares complete file-delivery paths against pinned
+spdlog `v1.17.0` and Quill `v12.1.0`. It is excluded from the installed package.
+Every implementation writes the same 164-byte LF-terminated record, delivers
+200,000 records, performs its final flush/drain, and must produce exactly the
+expected file size. Seven separate Release processes are run in alternating
+order; the table reports medians from the retained raw CSV.
+
+| Delivery contract | Producers | MEF ops/s | Comparable library ops/s |
+|---|---:|---:|---:|
+| Buffered synchronous file delivery vs spdlog | 1 | **2,219,470** | 1,059,040 |
+| Buffered synchronous file delivery vs spdlog | 4 | **3,287,320** | 1,011,190 |
+| Async file delivery: MEF bounded, Quill default | 1 | **2,308,210** | 484,006 |
+| Async file delivery: MEF bounded, Quill default | 4 | **1,975,530** | 431,115 |
+
+These are end-to-end cold-process results on the machine described above. They
+include logger/sink construction, queue growth where applicable, filesystem
+delivery, and the final flush. MEF's synchronous sink batches producer-local
+records; spdlog's tested file sink writes each formatted record through its file
+helper. The asynchronous comparison includes MEF backpressure and Quill's
+default dynamically growing producer queues. Consequently, the numbers describe
+these explicit configurations, not universal superiority over either project.
+
+```sh
+cmake -S . -B build-external -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTING=OFF -DBUILD_EXTERNAL_COMPARISON_BENCHMARKS=ON
+cmake --build build-external --target MicroErrorFrameworkExternalLoggerBenchmark
+./build-external/MicroErrorFrameworkExternalLoggerBenchmark mef-sync 200000 1
+```
+
+On Windows, `benchmarks/run_external_logger_comparison.ps1` performs the full
+alternating-order run. Raw evidence is stored in
+`benchmark-results/external-logger-raw-2026-08-22.csv`.
+
 ## Fuzzing
 
 - Ubuntu CI runs the coverage-guided LibFuzzer target for 10,000 inputs;

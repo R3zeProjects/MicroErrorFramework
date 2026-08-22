@@ -40,6 +40,10 @@ option(BUILD_LOCAL_LIBRARY_COMPARISONS
     "Build benchmarks against local comparable libraries"
     OFF
 )
+option(BUILD_EXTERNAL_COMPARISON_BENCHMARKS
+    "Build reproducible logger comparisons with pinned external libraries"
+    OFF
+)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -258,6 +262,40 @@ if(BUILD_LOCAL_LIBRARY_COMPARISONS)
             "${LocalTaskflowIncludeDir}"
     )
     enable_sanitizers(MicroErrorSystemWorkerPoolComparisonBenchmark)
+endif()
+
+if(BUILD_EXTERNAL_COMPARISON_BENCHMARKS)
+    include(FetchContent)
+
+    set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+    set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
+    set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        external_spdlog
+        GIT_REPOSITORY https://github.com/gabime/spdlog.git
+        GIT_TAG v1.17.0
+        GIT_SHALLOW TRUE
+    )
+
+    set(QUILL_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(QUILL_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(QUILL_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    set(QUILL_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        external_quill
+        GIT_REPOSITORY https://github.com/odygrd/quill.git
+        GIT_TAG v12.1.0
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(external_spdlog external_quill)
+
+    add_executable(MicroErrorFrameworkExternalLoggerBenchmark
+        benchmarks/vosp_external_logger_comparison.cpp
+    )
+    target_link_libraries(MicroErrorFrameworkExternalLoggerBenchmark
+        PRIVATE MicroErrorSystemHeaders spdlog::spdlog quill::quill
+    )
 endif()
 
 if(BUILD_TESTING)

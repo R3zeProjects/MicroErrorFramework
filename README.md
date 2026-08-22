@@ -95,6 +95,9 @@ results are documented in
 The complete ten-release comparison and machine-readable medians are recorded
 in [the historical report](benchmark-results/v0.1.0-v0.4.0-history-2026-08-21.md)
 and its [CSV dataset](benchmark-results/v0.1.0-v0.4.0-medians-2026-08-21.csv).
+An opt-in, non-installed external suite also validates equal file output against
+spdlog `v1.17.0` and Quill `v12.1.0`; methodology and measured medians are in
+[the benchmark guide](docs/BENCHMARKS.md#external-logger-comparison).
 
 Logger values are medians of seven Release launches after one excluded warm-up
 process over 3,000,000 owned records. Worker construction is excluded with a
